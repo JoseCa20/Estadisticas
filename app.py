@@ -423,7 +423,7 @@ mapa_equipos = {
 
 # === CARGAR DATOS DEL EQUIPO ===
 def cargar_datos(equipo_archivo, condicion="local", n=5):
-    archivo = f"C:/Users/jose-/OneDrive - MSFT/web scraping/new-stats/{equipo_archivo}.xlsx"
+    archivo = f"new-stats/{equipo_archivo}.xlsx"
     try:
         df = pd.read_excel(archivo)
         df = normalizar_columnas(df)
@@ -545,7 +545,7 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
     return resultados
 
 # === EQUIPOS DISPONIBLES ===
-archivos = [f.replace(".xlsx", "") for f in os.listdir("C:/Users/jose-/OneDrive - MSFT/web scraping/new-stats/") if f.endswith(".xlsx")]
+archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
 equipos_disponibles = sorted(archivos)
 
 # === UI SELECCIÓN ===
