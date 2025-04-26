@@ -502,6 +502,28 @@ def probabilidad_over_total(lambda_local, lambda_visitante, limite):
     lambda_total = lambda_local + lambda_visitante
     return round((1 - sum(poisson.pmf(k, lambda_total) for k in range(int(limite) + 1))) * 100, 1)
 
+def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=6):
+    """
+    Calcula las probabilidades de victoria local, empate y victoria visitante
+    """
+    prob_local = prob_empate = prob_visitante = 0.0
+    
+    for goles_local in range(0, max_goals + 1):
+        for goles_visitante in range(0, max_goals + 1):
+            p = poisson.pmf(goles_local, lambda_local) * poisson.pmf(goles_visitante, lambda_visitante)
+            if goles_local > goles_visitante:
+                prob_local += p
+            elif goles_local == goles_visitante:
+                prob_empate += p
+            else:
+                prob_visitante += p
+
+    return {
+        "Local Gana": round(prob_local * 100, 2),
+        "Empate": round(prob_empate * 100, 2),
+        "Visitante Gana": round(prob_visitante * 100, 2)
+    }
+
 # === FUNCIÓN PRINCIPAL ===
 def calcular_probabilidades_equipo(df_local, df_visitante):
     df_local = seleccionar_df(df_local)
@@ -516,6 +538,8 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
     lambda_local_2t = calcular_lambda(df_local, "2t_goles_favor", "xg_favor")
     lambda_visitante_1t = calcular_lambda(df_visitante, "1t_goles_favor", "xg_favor")
     lambda_visitante_2t = calcular_lambda(df_visitante, "2t_goles_favor", "xg_favor")
+
+    prob_resultados = calcular_probabilidades_resultado(lambda_local, lambda_visitante)
 
     resultados = {
         "Prob. Local marca": probabilidad_poisson(lambda_local)*100,
@@ -539,10 +563,88 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
         "Total A puerta": round((df_local["a_puerta_favor"].mean() + df_visitante["a_puerta_favor"].mean()), 1),
 
         "Prob. Over 1.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 1.5),
-        "Prob. Over 2.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 2.5)
+        "Prob. Over 2.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 2.5),
+
+        **prob_resultados
     }
 
     return resultados
+
+def generar_sugerencias(resultados):
+    sugerencias = []
+
+    if resultados.get("Prob. Gol 1T total", 0) > 60:
+        sugerencias.append((f"Over 0.5 goles en 1T", resultados["Prob. Gol 1T total"]))
+    if resultados.get("Prob. Gol 2T total", 0) > 65:
+        sugerencias.append((f"Over 0.5 goles en 2T", resultados["Prob. Gol 2T total"]))
+    if resultados.get("Prob. BTTS", 0) > 55:
+        sugerencias.append((f"Ambos equipos marcan (BTTS)", resultados["Prob. BTTS"]))
+    if resultados.get("Prob. Local marca", 0) > 70:
+        sugerencias.append((f"Local marca al menos un gol", resultados["Prob. Local marca"]))
+    if resultados.get("Prob. Visitante marca", 0) > 70:
+        sugerencias.append((f"Visitante marca al menos un gol", resultados["Prob. Visitante marca"]))
+    if resultados.get("Prob. Over 1.5 Goles", 0) > 70:
+        sugerencias.append((f"Over 1.5 goles en el partido", resultados["Prob. Over 1.5 Goles"]))
+    if resultados.get("Prob. Over 2.5 Goles", 0) > 60:
+        sugerencias.append((f"Over 2.5 goles en el partido", resultados["Prob. Over 2.5 Goles"]))
+    
+    if resultados.get("Local Gana", 0) > 50:
+        sugerencias.append((f"Victoria del Local", resultados["Local Gana"]))
+    elif resultados.get("Visitante Gana", 0) > 50:
+        sugerencias.append((f"Victoria del Visitante", resultados["Visitante Gana"]))
+    elif resultados.get("Empate", 0) > 45:
+        sugerencias.append((f"Empate", resultados["Empate"]))
+
+    return sugerencias
+
+
+def mostrar_resultados(resultados):
+    st.subheader("Probabilidades de Goles")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Local Marca", f"{resultados['Prob. Local marca']:.1f}%")
+        st.metric("Local 1T", f"{resultados['Prob. Local 1T']:.1f}%")
+        st.metric("Local 2T", f"{resultados['Prob. Local 2T']:.1f}%")
+
+    with col2:
+        st.metric("BTTS", f"{resultados['Prob. BTTS']:.1f}%")
+        st.metric("Gol 1T Total", f"{resultados['Prob. Gol 1T total']:.1f}%")
+        st.metric("Gol 2T Total", f"{resultados['Prob. Gol 2T total']:.1f}%")
+
+    with col3:
+        st.metric("Visitante Marca", f"{resultados['Prob. Visitante marca']:.1f}%")
+        st.metric("Visitante 1T", f"{resultados['Prob. Visitante 1T']:.1f}%")
+        st.metric("Visitante 2T", f"{resultados['Prob. Visitante 2T']:.1f}%")
+
+    st.subheader("Over de Goles")
+    st.metric("Over 1.5 Goles", f"{resultados['Prob. Over 1.5 Goles']:.1f}%")
+    st.metric("Over 2.5 Goles", f"{resultados['Prob. Over 2.5 Goles']:.1f}%")
+
+    st.subheader("Probabilidades de Resultado")
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        st.metric("Victoria Local", f"{resultados['Local Gana']:.1f}%")
+    with col5:
+        st.metric("Empate", f"{resultados['Empate']:.1f}%")
+    with col6:
+        st.metric("Victoria Visitante", f"{resultados['Visitante Gana']:.1f}%")
+
+    st.subheader("Remates")
+    col7, col8 = st.columns(2)
+    with col7:
+        st.metric("Prom. Remates Local", resultados["Prom. Remates Local"])
+        st.metric("A puerta Local", resultados["A puerta Local"])        
+        st.metric("Total Remates", resultados["Total Remates"])
+    with col8:
+        st.metric("Prom. Remates Visitante", resultados["Prom. Remates Visitante"])
+        st.metric("A puerta Visitante", resultados["A puerta Visitante"])
+        st.metric("Total A puerta", resultados["Total A puerta"])
+
+    st.subheader("💡 Sugerencias de Apuesta")
+    sugerencias = generar_sugerencias(resultados)
+    for texto, probabilidad in sugerencias:
+        st.success(f"{texto} — {probabilidad:.1f}%")
 
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
@@ -573,40 +675,6 @@ if equipo_local and equipo_visitante:
     nombre_visitante = equipo_visitante.replace("-", " ").title()
 
     st.markdown("## 📊 Estadísticas Generales")
-    col3, col4 = st.columns(2)
-    with col3:
-        st.markdown(f"### 🔵 {nombre_local}")
-        for key, val in stats_local.items():
-            st.metric(key, f"{val}")
-    with col4:
-        st.markdown(f"### 🔴 {nombre_visitante}")
-        for key, val in stats_visitante.items():
-            st.metric(key, f"{val}")
-
-    st.markdown("## 🔁 Probabilidades por Mitades (Condicionales)")
-    colm1, colm2 = st.columns(2)
-    with colm1:
-        st.metric("Local marca", f"{round(resultados['Prob. Local marca'], 1)}%")
-        st.metric("Local marca 1T", f"{round(resultados['Prob. Local 1T'], 1)}%")
-        st.metric("Local marca 2T", f"{round(resultados['Prob. Local 2T'], 1)}%")
-    with colm2:
-        st.metric("Visitante marca", f"{round(resultados['Prob. Visitante marca'], 1)}%")
-        st.metric("Visitante marca 1T", f"{round(resultados['Prob. Visitante 1T'], 1)}%")
-        st.metric("Visitante marca 2T", f"{round(resultados['Prob. Visitante 2T'], 1)}%")
-
-    st.markdown("## 🔥 Ambos Marcan - Probabilidad Condicional")
-    st.metric("BTTS Condicional", f"{round(resultados['Prob. BTTS'], 1)}%")
-
-    st.markdown("## 🎯 Remates Totales Condicionales")
-    colm1, colm2 = st.columns(2)
-    with colm1:
-        st.metric("Remates totales esperados", f"{resultados['Total Remates']}")       
-    with colm2:
-        st.metric("Remates a puerta esperados", f"{resultados['Total A puerta']}")
-    
-
-    st.markdown("## 📈 Probabilidades de Over Goles")
-    st.metric("Over 1.5 Goles", f"{round(resultados['Prob. Over 1.5 Goles'], 1)}%")
-    st.metric("Over 2.5 Goles", f"{round(resultados['Prob. Over 2.5 Goles'], 1)}%")
+    mostrar_resultados(resultados)
 else:
     st.warning("Selecciona un partido para ver el análisis.")
