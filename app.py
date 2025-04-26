@@ -573,24 +573,24 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
 def generar_sugerencias(resultados):
     sugerencias = []
 
-    if resultados.get("Prob. Gol 1T total", 0) > 60:
+    if resultados.get("Prob. Gol 1T total", 0) > 85:
         sugerencias.append((f"Over 0.5 goles en 1T", resultados["Prob. Gol 1T total"]))
-    if resultados.get("Prob. Gol 2T total", 0) > 65:
+    if resultados.get("Prob. Gol 2T total", 0) > 85:
         sugerencias.append((f"Over 0.5 goles en 2T", resultados["Prob. Gol 2T total"]))
-    if resultados.get("Prob. BTTS", 0) > 55:
+    if resultados.get("Prob. BTTS", 0) > 70:
         sugerencias.append((f"Ambos equipos marcan (BTTS)", resultados["Prob. BTTS"]))
-    if resultados.get("Prob. Local marca", 0) > 70:
+    if resultados.get("Prob. Local marca", 0) > 85:
         sugerencias.append((f"Local marca al menos un gol", resultados["Prob. Local marca"]))
-    if resultados.get("Prob. Visitante marca", 0) > 70:
+    if resultados.get("Prob. Visitante marca", 0) > 85:
         sugerencias.append((f"Visitante marca al menos un gol", resultados["Prob. Visitante marca"]))
-    if resultados.get("Prob. Over 1.5 Goles", 0) > 70:
+    if resultados.get("Prob. Over 1.5 Goles", 0) > 75:
         sugerencias.append((f"Over 1.5 goles en el partido", resultados["Prob. Over 1.5 Goles"]))
-    if resultados.get("Prob. Over 2.5 Goles", 0) > 60:
+    if resultados.get("Prob. Over 2.5 Goles", 0) > 70:
         sugerencias.append((f"Over 2.5 goles en el partido", resultados["Prob. Over 2.5 Goles"]))
     
-    if resultados.get("Local Gana", 0) > 50:
+    if resultados.get("Local Gana", 0) > 70:
         sugerencias.append((f"Victoria del Local", resultados["Local Gana"]))
-    elif resultados.get("Visitante Gana", 0) > 50:
+    elif resultados.get("Visitante Gana", 0) > 70:
         sugerencias.append((f"Victoria del Visitante", resultados["Visitante Gana"]))
     elif resultados.get("Empate", 0) > 45:
         sugerencias.append((f"Empate", resultados["Empate"]))
