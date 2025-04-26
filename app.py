@@ -573,17 +573,17 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
 def generar_sugerencias(resultados):
     sugerencias = []
 
-    if resultados.get("Prob. Gol 1T total", 0) > 85:
+    if resultados.get("Prob. Gol 1T total", 0) > 80:
         sugerencias.append((f"Over 0.5 goles en 1T", resultados["Prob. Gol 1T total"]))
-    if resultados.get("Prob. Gol 2T total", 0) > 85:
+    if resultados.get("Prob. Gol 2T total", 0) > 80:
         sugerencias.append((f"Over 0.5 goles en 2T", resultados["Prob. Gol 2T total"]))
     if resultados.get("Prob. BTTS", 0) > 70:
         sugerencias.append((f"Ambos equipos marcan (BTTS)", resultados["Prob. BTTS"]))
-    if resultados.get("Prob. Local marca", 0) > 85:
+    if resultados.get("Prob. Local marca", 0) > 80:
         sugerencias.append((f"Local marca al menos un gol", resultados["Prob. Local marca"]))
-    if resultados.get("Prob. Visitante marca", 0) > 85:
+    if resultados.get("Prob. Visitante marca", 0) > 80:
         sugerencias.append((f"Visitante marca al menos un gol", resultados["Prob. Visitante marca"]))
-    if resultados.get("Prob. Over 1.5 Goles", 0) > 75:
+    if resultados.get("Prob. Over 1.5 Goles", 0) > 80:
         sugerencias.append((f"Over 1.5 goles en el partido", resultados["Prob. Over 1.5 Goles"]))
     if resultados.get("Prob. Over 2.5 Goles", 0) > 70:
         sugerencias.append((f"Over 2.5 goles en el partido", resultados["Prob. Over 2.5 Goles"]))
