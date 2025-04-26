@@ -599,6 +599,12 @@ def generar_sugerencias(resultados):
 
 
 def mostrar_resultados(resultados):
+
+    st.subheader("💡 Sugerencias de Apuesta")
+    sugerencias = generar_sugerencias(resultados)
+    for texto, probabilidad in sugerencias:
+        st.success(f"{texto} — {probabilidad:.1f}%")
+        
     st.subheader("Probabilidades de Goles")
 
     col1, col2, col3 = st.columns(3)
@@ -641,10 +647,7 @@ def mostrar_resultados(resultados):
         st.metric("A puerta Visitante", resultados["A puerta Visitante"])
         st.metric("Total A puerta", resultados["Total A puerta"])
 
-    st.subheader("💡 Sugerencias de Apuesta")
-    sugerencias = generar_sugerencias(resultados)
-    for texto, probabilidad in sugerencias:
-        st.success(f"{texto} — {probabilidad:.1f}%")
+    
 
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
