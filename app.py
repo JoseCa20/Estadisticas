@@ -749,9 +749,8 @@ def mostrar_resultados(resultados):
 
     st.subheader("💡 Sugerencias de Apuesta")
     sugerencias = generar_sugerencias(resultados)
-    for texto, probabilidad in sugerencias:
-        cuota_implicita = 100 / probabilidad if probabilidad > 0 else float("inf")
-        st.success(f"{texto} — {probabilidad:.1f}% ({cuota_implicita:.2f})")
+    for sugerencia in resultados["Sugerencias"]:
+        st.success(sugerencia)
         
     st.subheader("Probabilidades de Goles")
 
