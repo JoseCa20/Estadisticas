@@ -748,8 +748,8 @@ def generar_sugerencias(resultados):
 def mostrar_resultados(resultados):
 
     st.subheader("💡 Sugerencias de Apuesta")
-    sugerencias = generar_sugerencias(resultados)
-    for sugerencia in resultados["Sugerencias"]:
+    sugerencias = generar_sugerencias(resultados)    
+    for sugerencia in sugerencias:
         st.success(sugerencia)
         
     st.subheader("Probabilidades de Goles")
