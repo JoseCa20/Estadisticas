@@ -480,13 +480,16 @@ def probabilidad_poisson(lmbda, min_goles=1):
 
 # === DECISIÓN AUTOMÁTICA ===
 def seleccionar_df(df):
-    ultimos_5 = df.tail(5)
+    ult_3 = df.tail(3)
+    ult_5 = df.tail(5)
     total = df
 
-    precision_5 = abs(ultimos_5["goles_local"].mean() - ultimos_5["xg_favor"].mean())
-    precision_total = abs(total["goles_local"].mean() - total["xg_favor"].mean())
+    def tendencia(df_set):
+        return df_set['goles_local'].mean() + df_set['goles_visitante'].mean()
 
-    return ultimos_5 if precision_5 < precision_total else total
+    sets = [(ult_3, tendencia(ult_3)), (ult_5, tendencia(ult_5)), (total, tendencia(total))]
+    sets.sort(key=lambda x: -x[1])  # Mayor tendencia ofensiva
+    return sets[0][0]
 
 # === CALCULAR ESTADÍSTICAS ===
 def calcular_estadisticas(df, tipo):
@@ -501,6 +504,10 @@ def calcular_estadisticas(df, tipo):
 def probabilidad_over_total(lambda_local, lambda_visitante, limite):
     lambda_total = lambda_local + lambda_visitante
     return round((1 - sum(poisson.pmf(k, lambda_total) for k in range(int(limite) + 1))) * 100, 1)
+
+def calcular_probabilidad_over_equipo(lmbda, threshold):
+    prob = 1 - poisson.cdf(threshold, lmbda)
+    return round(prob * 100, 1)
 
 def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=6):
     """
@@ -565,6 +572,10 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
         "Prob. Over 1.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 1.5),
         "Prob. Over 2.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 2.5),
 
+        "Prob. Local Over 1.5 Goles": calcular_probabilidad_over_equipo(lambda_local, 1.5),
+        "Prob. Visitante Over 1.5 Goles": calcular_probabilidad_over_equipo(lambda_local, 1.5),
+
+
         **prob_resultados
     }
 
@@ -573,29 +584,39 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
 def generar_sugerencias(resultados):
     sugerencias = []
 
-    if resultados.get("Prob. Gol 1T total", 0) > 80:
-        sugerencias.append((f"Over 0.5 goles en 1T", resultados["Prob. Gol 1T total"]))
-    if resultados.get("Prob. Gol 2T total", 0) > 80:
-        sugerencias.append((f"Over 0.5 goles en 2T", resultados["Prob. Gol 2T total"]))
-    if resultados.get("Prob. BTTS", 0) > 70:
-        sugerencias.append((f"Ambos equipos marcan (BTTS)", resultados["Prob. BTTS"]))
-    if resultados.get("Prob. Local marca", 0) > 80:
-        sugerencias.append((f"Local marca al menos un gol", resultados["Prob. Local marca"]))
-    if resultados.get("Prob. Visitante marca", 0) > 80:
-        sugerencias.append((f"Visitante marca al menos un gol", resultados["Prob. Visitante marca"]))
-    if resultados.get("Prob. Over 1.5 Goles", 0) > 80:
-        sugerencias.append((f"Over 1.5 goles en el partido", resultados["Prob. Over 1.5 Goles"]))
-    if resultados.get("Prob. Over 2.5 Goles", 0) > 70:
-        sugerencias.append((f"Over 2.5 goles en el partido", resultados["Prob. Over 2.5 Goles"]))
-    
-    if resultados.get("Local Gana", 0) > 70:
-        sugerencias.append((f"Victoria del Local", resultados["Local Gana"]))
-    elif resultados.get("Visitante Gana", 0) > 70:
-        sugerencias.append((f"Victoria del Visitante", resultados["Visitante Gana"]))
-    elif resultados.get("Empate", 0) > 45:
-        sugerencias.append((f"Empate", resultados["Empate"]))
+    def formato(prob):
+        cuota = 100 / prob if prob > 0 else 0
+        return f"{prob:.1f}% (cuota {cuota:.2f})"
 
-    return sugerencias
+    if resultados.get("Prob. Gol 1T total", 0) > 80:
+        sugerencias.append((f"Over 0.5 goles en 1T", formato(resultados["Prob. Gol 1T total"])))
+    if resultados.get("Prob. Gol 2T total", 0) > 80:
+        sugerencias.append((f"Over 0.5 goles en 2T", formato(resultados["Prob. Gol 2T total"])))
+    if resultados.get("Prob. BTTS", 0) > 70:
+        sugerencias.append((f"Ambos equipos marcan (BTTS)", formato(resultados["Prob. BTTS"])))
+    if resultados.get("Prob. Local marca", 0) > 80:
+        sugerencias.append((f"Local marca al menos un gol", formato(resultados["Prob. Local marca"])))
+    if resultados.get("Prob. Visitante marca", 0) > 80:
+        sugerencias.append((f"Visitante marca al menos un gol", formato(resultados["Prob. Visitante marca"])))
+    if resultados.get("Prob. Over 1.5 Goles", 0) > 80:
+        sugerencias.append((f"Over 1.5 goles en el partido", formato(resultados["Prob. Over 1.5 Goles"])))
+    if resultados.get("Prob. Over 2.5 Goles", 0) > 70:
+        sugerencias.append((f"Over 2.5 goles en el partido", formato(resultados["Prob. Over 2.5 Goles"])))
+
+    if resultados.get("Prob. Local Over 1.5", 0) > 60:
+        sugerencias.append((f"Local Over 1.5 goles", formato(resultados["Prob. Local Over 1.5"])))
+    if resultados.get("Prob. Visitante Over 1.5", 0) > 60:
+        sugerencias.append((f"Visitante Over 1.5 goles", formato(resultados["Prob. Visitante Over 1.5"])))
+
+    if resultados.get("Local Gana", 0) > 70:
+        sugerencias.append((f"Victoria del Local", formato(resultados["Local Gana"])))
+    elif resultados.get("Visitante Gana", 0) > 70:
+        sugerencias.append((f"Victoria del Visitante", formato(resultados["Visitante Gana"])))
+    elif resultados.get("Empate", 0) > 45:
+        sugerencias.append((f"Empate", formato(resultados["Empate"])))
+
+    return [f"{texto} — {valor}" for texto, valor in sugerencias]
+
 
 
 def mostrar_resultados(resultados):
@@ -610,6 +631,7 @@ def mostrar_resultados(resultados):
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Local Marca", f"{resultados['Prob. Local marca']:.1f}%")
+        st.metric("Local Marca over 1.5", f"{resultados['Prob. Local Over 1.5 Goles']:.1f}%")
         st.metric("Local 1T", f"{resultados['Prob. Local 1T']:.1f}%")
         st.metric("Local 2T", f"{resultados['Prob. Local 2T']:.1f}%")
 
@@ -620,6 +642,7 @@ def mostrar_resultados(resultados):
 
     with col3:
         st.metric("Visitante Marca", f"{resultados['Prob. Visitante marca']:.1f}%")
+        st.metric("Visitante Marca over 1.5", f"{resultados['Prob. Visitante Over 1.5 Goles']:.1f}%")
         st.metric("Visitante 1T", f"{resultados['Prob. Visitante 1T']:.1f}%")
         st.metric("Visitante 2T", f"{resultados['Prob. Visitante 2T']:.1f}%")
 
