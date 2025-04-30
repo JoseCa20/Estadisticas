@@ -6,7 +6,7 @@ def normalizar_columnas(df):
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
     return df
 
-carpeta = "C:/Users/jose-/OneDrive - MSFT/web scraping/new-stats/"
+carpeta = "C:/Users/jose-/OneDrive - MSFT/web scraping/statsFutbol/new-stats/"
 archivos = [f for f in os.listdir(carpeta) if f.endswith(".xlsx")]
 
 mapa_equipos = {}
