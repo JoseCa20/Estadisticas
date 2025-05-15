@@ -751,6 +751,12 @@ def mostrar_resultados(resultados):
     sugerencias = generar_sugerencias(resultados)    
     for sugerencia in sugerencias:
         st.success(sugerencia)
+
+    st.subHeader("ultimos 5 partidos  local")
+    st.write(df_local.tail(5))
+
+    st.subHeader("ultimos 5 partidos  visitante")
+    st.write(df_visitante.tail(5))
         
     st.subheader("Probabilidades de Goles")
 
