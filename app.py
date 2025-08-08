@@ -929,12 +929,12 @@ with col2:
 #     st.warning("Selecciona un partido para ver el análisis.")
 
 # === CÁLCULOS Y VISUALIZACIÓN ===
-if equipo_local_nombre and equipo_visitante_nombre:
-    df_local = cargar_datos(equipo_local_nombre, "local", 10)
-    df_visitante = cargar_datos(equipo_visitante_nombre, "visitante", 10)
+if equipo_local and equipo_visitante:
+    df_local = cargar_datos(equipo_local, "local", 10)
+    df_visitante = cargar_datos(equipo_visitante, "visitante", 10)
 
-    stats_local = calcular_estadisticas_y_rachas(df_local, equipo_local_nombre, "local")
-    stats_visitante = calcular_estadisticas_y_rachas(df_visitante, equipo_visitante_nombre, "visitante")
+    stats_local = calcular_estadisticas_y_rachas(df_local, equipo_local, "local")
+    stats_visitante = calcular_estadisticas_y_rachas(df_visitante, equipo_visitante, "visitante")
     
     # Crear los DataFrames para visualización
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
