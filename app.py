@@ -548,7 +548,7 @@ mapa_equipos = {
 }
 
 # === CARGAR DATOS DEL EQUIPO ===
-def cargar_datos(equipo_archivo, condicion="local", n=5):
+def cargar_datos(equipo_archivo, condicion="local", n=10):
     archivo = f"new-stats/{equipo_archivo}.xlsx"
     try:
         df = pd.read_excel(archivo)
@@ -616,6 +616,97 @@ def seleccionar_df(df):
     sets = [(ult_3, tendencia(ult_3)), (ult_5, tendencia(ult_5)), (total, tendencia(total))]
     sets.sort(key=lambda x: -x[1])  # Mayor tendencia ofensiva
     return sets[0][0]
+
+# === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
+def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
+    if df.empty:
+        return None
+
+    df_calculo = df.copy()
+
+    # Columnas de goles según si el equipo es local o visitante
+    goles_a_favor = f"goles_{tipo_partido}"
+    goles_en_contra = "goles_visitante" if tipo_partido == "local" else "goles_local"
+    goles_ht_favor = f"1t_goles_{tipo_partido}"
+    goles_ht_contra = "1t_goles_visitante" if tipo_partido == "local" else "1t_goles_local"
+
+    # Promedio de goles
+    media_gol = round(df_calculo[goles_a_favor].mean(), 2)
+
+    # BTTS
+    btts = (
+        (
+            (df_calculo[goles_a_favor] > 0)
+            & (df_calculo[goles_en_contra] > 0)
+        ).mean()
+        * 100
+    )
+    racha_btts = 0
+    for i in range(len(df_calculo) - 1, -1, -1):
+        if (df_calculo.iloc[i][goles_a_favor] > 0) and (df_calculo.iloc[i][goles_en_contra] > 0):
+            racha_btts += 1
+        else:
+            break
+
+    # Gol HT
+    gol_ht = (
+        (
+            (df_calculo[goles_ht_favor] + df_calculo[goles_ht_contra]) > 0
+        ).mean()
+        * 100
+    )
+    racha_gol_ht = 0
+    for i in range(len(df_calculo) - 1, -1, -1):
+        if (df_calculo.iloc[i][goles_ht_favor] + df_calculo.iloc[i][goles_ht_contra]) > 0:
+            racha_gol_ht += 1
+        else:
+            break
+
+    # Over 2.5 Goles
+    over_2_5_goles = (
+        (
+            (df_calculo[goles_a_favor] + df_calculo[goles_en_contra]) > 2
+        ).mean()
+        * 100
+    )
+    racha_over_2_5 = 0
+    for i in range(len(df_calculo) - 1, -1, -1):
+        if (df_calculo.iloc[i][goles_a_favor] + df_calculo.iloc[i][goles_en_contra]) > 2:
+            racha_over_2_5 += 1
+        else:
+            break
+
+    # Over 1.5 HT
+    over_1_5_ht = (
+        (
+            (df_calculo[goles_ht_favor] + df_calculo[goles_ht_contra]) > 1
+        ).mean()
+        * 100
+    )
+    racha_over_1_5_ht = 0
+    for i in range(len(df_calculo) - 1, -1, -1):
+        if (df_calculo.iloc[i][goles_ht_favor] + df_calculo.iloc[i][goles_ht_contra]) > 1:
+            racha_over_1_5_ht += 1
+        else:
+            break
+
+    return {
+        "Estadística": ["Media Gol", "BTTS", "Gol HT", "Over 2.5 Goles", "Over 1.5 HT"],
+        f"{equipo_nombre} {tipo_partido.title()}": [
+            media_gol,
+            f"{btts:.1f}%",
+            f"{gol_ht:.1f}%",
+            f"{over_2_5_goles:.1f}%",
+            f"{over_1_5_ht:.1f}%",
+        ],
+        "Racha": [
+            "",
+            racha_btts,
+            racha_gol_ht,
+            racha_over_2_5,
+            racha_over_1_5_ht,
+        ],
+    }
 
 # === CALCULAR ESTADÍSTICAS ===
 def calcular_estadisticas(df, tipo):
@@ -816,23 +907,56 @@ with col2:
     equipo_visitante = st.selectbox("🔴 Equipo VISITANTE", equipos_disponibles)
 
 # === CÁLCULOS DE PROBABILIDADES ===
-if equipo_local and equipo_visitante:
-    # Cargar datos históricos
-    df_local = cargar_datos(equipo_local, "local", 5)
-    df_visitante = cargar_datos(equipo_visitante, "visitante", 5)
+# if equipo_local and equipo_visitante:
+#     Cargar datos históricos
+#     df_local = cargar_datos(equipo_local, "local", 5)
+#     df_visitante = cargar_datos(equipo_visitante, "visitante", 5)
 
-    # Calcular estadísticas de los equipos
-    stats_local = calcular_estadisticas(df_local, "local")
-    stats_visitante = calcular_estadisticas(df_visitante, "visitante")
+#     Calcular estadísticas de los equipos
+#     stats_local = calcular_estadisticas(df_local, "local")
+#     stats_visitante = calcular_estadisticas(df_visitante, "visitante")
 
-    # Calcular probabilidades
-    resultados = calcular_probabilidades_equipo(df_local, df_visitante)
+#     Calcular probabilidades
+#     resultados = calcular_probabilidades_equipo(df_local, df_visitante)
 
-    # Mostrar los resultados en Streamlit
-    nombre_local = equipo_local.replace("-", " ").title()
-    nombre_visitante = equipo_visitante.replace("-", " ").title()
+#     Mostrar los resultados en Streamlit
+#     nombre_local = equipo_local.replace("-", " ").title()
+#     nombre_visitante = equipo_visitante.replace("-", " ").title()
 
-    st.markdown("## 📊 Estadísticas Generales")
-    mostrar_resultados(resultados)
+#     st.markdown("## 📊 Estadísticas Generales")
+#     mostrar_resultados(resultados)
+# else:
+#     st.warning("Selecciona un partido para ver el análisis.")
+
+# === CÁLCULOS Y VISUALIZACIÓN ===
+if equipo_local_nombre and equipo_visitante_nombre:
+    df_local = cargar_datos(equipo_local_nombre, "local", 10)
+    df_visitante = cargar_datos(equipo_visitante_nombre, "visitante", 10)
+
+    stats_local = calcular_estadisticas_y_rachas(df_local, equipo_local_nombre, "local")
+    stats_visitante = calcular_estadisticas_y_rachas(df_visitante, equipo_visitante_nombre, "visitante")
+    
+    # Crear los DataFrames para visualización
+    df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
+    df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
+    
+    st.markdown("## 📊 Estadísticas Detalladas de los Últimos 10 Partidos")
+    
+    col_local, col_visitante = st.columns(2)
+    
+    with col_local:
+        st.subheader("🔵 Equipo Local")
+        if not df_stats_local.empty:
+            st.dataframe(df_stats_local.set_index("Estadística"))
+        else:
+            st.warning("No se encontraron datos del equipo local.")
+
+    with col_visitante:
+        st.subheader("🔴 Equipo Visitante")
+        if not df_stats_visitante.empty:
+            st.dataframe(df_stats_visitante.set_index("Estadística"))
+        else:
+            st.warning("No se encontraron datos del equipo visitante.")
+
 else:
     st.warning("Selecciona un partido para ver el análisis.")
