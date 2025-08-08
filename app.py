@@ -907,35 +907,22 @@ with col2:
     equipo_visitante = st.selectbox("🔴 Equipo VISITANTE", equipos_disponibles)
 
 # === CÁLCULOS DE PROBABILIDADES ===
-# if equipo_local and equipo_visitante:
-#     Cargar datos históricos
-#     df_local = cargar_datos(equipo_local, "local", 5)
-#     df_visitante = cargar_datos(equipo_visitante, "visitante", 5)
-
-#     Calcular estadísticas de los equipos
-#     stats_local = calcular_estadisticas(df_local, "local")
-#     stats_visitante = calcular_estadisticas(df_visitante, "visitante")
-
-#     Calcular probabilidades
-#     resultados = calcular_probabilidades_equipo(df_local, df_visitante)
-
-#     Mostrar los resultados en Streamlit
-#     nombre_local = equipo_local.replace("-", " ").title()
-#     nombre_visitante = equipo_visitante.replace("-", " ").title()
-
-#     st.markdown("## 📊 Estadísticas Generales")
-#     mostrar_resultados(resultados)
-# else:
-#     st.warning("Selecciona un partido para ver el análisis.")
-
-# === CÁLCULOS Y VISUALIZACIÓN ===
 if equipo_local and equipo_visitante:
+    # Cargar datos históricos
     df_local = cargar_datos(equipo_local, "local", 10)
     df_visitante = cargar_datos(equipo_visitante, "visitante", 10)
 
-    stats_local = calcular_estadisticas_y_rachas(df_local, equipo_local, "local")
-    stats_visitante = calcular_estadisticas_y_rachas(df_visitante, equipo_visitante, "visitante")
-    
+    # Calcular estadísticas de los equipos
+    stats_local = calcular_estadisticas(df_local, "local")
+    stats_visitante = calcular_estadisticas(df_visitante, "visitante")
+
+    # Calcular probabilidades
+    resultados = calcular_probabilidades_equipo(df_local, df_visitante)
+
+    # Mostrar los resultados en Streamlit
+    nombre_local = equipo_local.replace("-", " ").title()
+    nombre_visitante = equipo_visitante.replace("-", " ").title()
+
     # Crear los DataFrames para visualización
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
     df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
@@ -958,5 +945,9 @@ if equipo_local and equipo_visitante:
         else:
             st.warning("No se encontraron datos del equipo visitante.")
 
+    st.markdown("## 📊 Estadísticas Generales")
+    mostrar_resultados(resultados)
 else:
     st.warning("Selecciona un partido para ver el análisis.")
+
+
