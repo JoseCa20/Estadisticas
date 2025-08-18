@@ -781,16 +781,25 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 
     df_calculo = df.copy()
 
-    # Columnas de goles según si el equipo es local o visitante
-    goles_a_favor = "goles_local" if tipo_partido == "local" else "goles_visitante"
-    goles_en_contra = "goles_visitante" if tipo_partido == "local" else "goles_local"
-    goles_ht_favor_col = "1t_goles_favor" if tipo_partido == "local" else "1t_goles_favor"
-    goles_ht_contra_col = "1t_goles_contra" if tipo_partido == "local" else "1t_goles_contra"
+    # Columnas de goles y remates según si el equipo es local o visitante
+    goles_a_favor_col = "goles_local" if tipo_partido == "local" else "goles_visitante"
+    goles_en_contra_col = "goles_visitante" if tipo_partido == "local" else "goles_local"
+    goles_ht_favor_col = "1t_goles_favor" 
+    goles_ht_contra_col = "1t_goles_contra"
+    goles_st_favor_col = "2t_goles_favor"
+    goles_st_contra_col = "2t_goles_contra"
+    remates_favor_col = "shots_favor"
+    a_puerta_favor_col = "a_puerta_favor"
 
-    media_gol = round(df_calculo[goles_a_favor].mean(), 2)
+    # Goles y remates
+    media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
+    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 2)
+    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
+    promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
+    promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
 
     # BTTS
-    btts_cond = (df_calculo[goles_a_favor] > 0) & (df_calculo[goles_en_contra] > 0)
+    btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
     btts = btts_cond.mean() * 100
     racha_btts = 0
     for i in range(len(btts_cond) - 1, -1, -1):
@@ -809,8 +818,18 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
 
+    # Over 1.5 Goles Totales
+    over_1_5_total_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 1.5
+    over_1_5_total = over_1_5_total_cond.mean() * 100
+    racha_over_1_5_total = 0
+    for i in range(len(over_1_5_total_cond) - 1, -1, -1):
+        if over_1_5_total_cond.iloc[i]:
+            racha_over_1_5_total += 1
+        else:
+            break
+
     # Over 2.5 Goles
-    over_2_5_cond = (df_calculo[goles_a_favor] + df_calculo[goles_en_contra]) > 2
+    over_2_5_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 2.5
     over_2_5_goles = over_2_5_cond.mean() * 100
     racha_over_2_5 = 0
     for i in range(len(over_2_5_cond) - 1, -1, -1):
@@ -820,7 +839,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     # Over 1.5 HT
-    over_1_5_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 1
+    over_1_5_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 1.5
     over_1_5_ht = over_1_5_ht_cond.mean() * 100
     racha_over_1_5_ht = 0
     for i in range(len(over_1_5_ht_cond) - 1, -1, -1):
@@ -828,23 +847,56 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_over_1_5_ht += 1
         else:
             break
+            
+    # Promedio de remates
+    racha_prom_remates = 0
+    prom_remates_ultimos = df_calculo[remates_favor_col].tail(1)
+    if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] > df_calculo[remates_favor_col].mean():
+        racha_prom_remates = sum(df_calculo[remates_favor_col].tail(10) > df_calculo[remates_favor_col].mean())
 
-    # Se corrige la creación del diccionario para que las listas sean del mismo tamaño
+    # Promedio de tiros a puerta
+    racha_prom_tiros_puerta = 0
+    prom_tiros_puerta_ultimos = df_calculo[a_puerta_favor_col].tail(1)
+    if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
+        racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
+
+
     return {
-        "Estadística": ["Media Gol", "BTTS", "Gol HT", "Over 2.5 Goles", "Over 1.5 HT"],
+        "Estadística": [
+            "Media Gol", 
+            "Media Gol 1T", 
+            "Media Gol 2T", 
+            "BTTS", 
+            "Gol HT", 
+            "Over 1.5 Goles Total",
+            "Over 2.5 Goles", 
+            "Over 1.5 HT",
+            "Promedio Remates",
+            "Promedio Tiros a Puerta"
+        ],
         f"{equipo_nombre} {tipo_partido.title()}": [
             media_gol,
+            media_gol_1t,
+            media_gol_2t,
             f"{btts:.1f}%",
             f"{gol_ht:.1f}%",
+            f"{over_1_5_total:.1f}%",
             f"{over_2_5_goles:.1f}%",
             f"{over_1_5_ht:.1f}%",
+            promedio_remates,
+            promedio_tiros_puerta
         ],
         "Racha": [
             "",
+            "",
+            "",
             racha_btts,
             racha_gol_ht,
+            racha_over_1_5_total,
             racha_over_2_5,
             racha_over_1_5_ht,
+            racha_prom_remates,
+            racha_prom_tiros_puerta
         ],
     }
 
