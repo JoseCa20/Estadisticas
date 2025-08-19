@@ -868,7 +868,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T", 
             "BTTS", 
             "Gol HT", 
-            "Over 1.5 Goles Total",
+            "Over 1.5 Goles",
             "Over 2.5 Goles", 
             "Over 1.5 HT",
             "Promedio Remates",
