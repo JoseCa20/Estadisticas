@@ -544,7 +544,7 @@ def calcular_lambda(df, col_goles, col_xg, partidos_recientes=5):
 
     df_recientes = df.sort_values(by="fecha", ascending=False).head(partidos_recientes)
     xg_forma = df_recientes[col_xg].mean()
-    efectividad_forma = (df_recientes[col_goles].sum() / df_recientes[col_xg].sum()) if df_recientes[col_xg].sum() > 0 else 1
+    efectividad_forma = (df_recientes[col_goles].sum() / df_recientes[col_xg].sum()) if df_recientes[col_goles].sum() > 0 else 1
 
     peso_xg = 0.4
     peso_efectividad = 0.3
@@ -865,6 +865,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
             racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
 
+    # Devolver un diccionario con las estadísticas
     return {
         "Estadística": [
             "Media Gol", 
@@ -882,11 +883,11 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol,
             media_gol_1t,
             media_gol_2t,
-            f"{btts:.1f}%",
-            f"{gol_ht:.1f}%",
-            f"{over_1_5_total:.1f}%",
-            f"{over_2_5_goles:.1f}%",
-            f"{over_1_5_ht:.1f}%",
+            f"{btts:.1f}%",  # Ya es un string formateado
+            f"{gol_ht:.1f}%", # Ya es un string formateado
+            f"{over_1_5_total:.1f}%", # Ya es un string formateado
+            f"{over_2_5_goles:.1f}%", # Ya es un string formateado
+            f"{over_1_5_ht:.1f}%", # Ya es un string formateado
             promedio_remates,
             promedio_tiros_puerta
         ],
@@ -917,7 +918,6 @@ def color_racha_rows(row):
     except (ValueError, TypeError):
         return [''] * len(row)
 
-
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
 equipos_disponibles = sorted(archivos)
@@ -947,14 +947,24 @@ if equipo_local_nombre and equipo_visitante_nombre:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
             nombre_columna_local = f"{equipo_local_nombre} Local"
-            styled_df_local = df_stats_local.style.format({nombre_columna_local: '{:.1f}'}).apply(color_racha_rows, axis=1)
+            
+            # --- CAMBIO AQUÍ: Definir las columnas que serán formateadas ---
+            columnas_numericas_local = ["Media Gol", "Media Gol 1T", "Media Gol 2T", "Promedio Remates", "Promedio Tiros a Puerta"]
+            format_dict_local = {col: '{:.1f}' for col in columnas_numericas_local}
+            
+            styled_df_local = df_stats_local.style.format(format_dict_local).apply(color_racha_rows, axis=1)
             st.dataframe(styled_df_local, use_container_width=True, hide_index=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
             nombre_columna_visitante = f"{equipo_visitante_nombre} Visitante"
-            styled_df_visitante = df_stats_visitante.style.format({nombre_columna_visitante: '{:.1f}'}).apply(color_racha_rows, axis=1)
+            
+            # --- CAMBIO AQUÍ: Definir las columnas que serán formateadas ---
+            columnas_numericas_visitante = ["Media Gol", "Media Gol 1T", "Media Gol 2T", "Promedio Remates", "Promedio Tiros a Puerta"]
+            format_dict_visitante = {col: '{:.1f}' for col in columnas_numericas_visitante}
+            
+            styled_df_visitante = df_stats_visitante.style.format(format_dict_visitante).apply(color_racha_rows, axis=1)
             st.dataframe(styled_df_visitante, use_container_width=True, hide_index=True)
 
     st.markdown("---")
