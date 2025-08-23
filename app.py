@@ -503,6 +503,7 @@ mapa_equipos = {
 "zaglebie-lubin": "zaglebie"
 }
 
+
 # === NORMALIZACIÓN DE COLUMNAS ===
 def normalizar_columnas(df):
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
@@ -763,7 +764,7 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
 
-# === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
+# === CÁLCULO DE ESTADÍSTICAS Y RACHAS (MODIFICADO) ===
 def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     if df.empty:
         return None
@@ -779,19 +780,18 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     remates_favor_col = "shots_favor"
     a_puerta_favor_col = "a_puerta_favor"
 
-    media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
-    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 2)
-    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
+    media_gol = round(df_calculo[goles_a_favor_col].mean(), 1)
+    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 1)
+    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 1)
     promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
     
-    # Rachas para las medias de goles por tiempo
     racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
     racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
     racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
     
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
-    btts = btts_cond.mean() * 100
+    btts = round(btts_cond.mean() * 100, 1)
     racha_btts = 0
     for i in range(len(btts_cond) - 1, -1, -1):
         if btts_cond.iloc[i]:
@@ -800,7 +800,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     gol_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 0
-    gol_ht = gol_ht_cond.mean() * 100
+    gol_ht = round(gol_ht_cond.mean() * 100, 1)
     racha_gol_ht = 0
     for i in range(len(gol_ht_cond) - 1, -1, -1):
         if gol_ht_cond.iloc[i]:
@@ -809,7 +809,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     over_1_5_total_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 1.5
-    over_1_5_total = over_1_5_total_cond.mean() * 100
+    over_1_5_total = round(over_1_5_total_cond.mean() * 100, 1)
     racha_over_1_5_total = 0
     for i in range(len(over_1_5_total_cond) - 1, -1, -1):
         if over_1_5_total_cond.iloc[i]:
@@ -818,7 +818,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     over_2_5_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 2.5
-    over_2_5_goles = over_2_5_cond.mean() * 100
+    over_2_5_goles = round(over_2_5_cond.mean() * 100, 1)
     racha_over_2_5 = 0
     for i in range(len(over_2_5_cond) - 1, -1, -1):
         if over_2_5_cond.iloc[i]:
@@ -827,7 +827,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     over_1_5_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 1.5
-    over_1_5_ht = over_1_5_ht_cond.mean() * 100
+    over_1_5_ht = round(over_1_5_ht_cond.mean() * 100, 1)
     racha_over_1_5_ht = 0
     for i in range(len(over_1_5_ht_cond) - 1, -1, -1):
         if over_1_5_ht_cond.iloc[i]:
@@ -878,14 +878,14 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         ],
     }
 
-# === APLICAR ESTILOS CSS ===
+# === APLICAR ESTILOS CSS (MODIFICADO) ===
 def highlight_racha(row):
     racha = row['Racha']
     if isinstance(racha, (int, float)):
         if racha >= 5:
-            return ['background-color: #66BB6A'] * len(row)  # Verde
+            return ['background-color: #D2E0C4'] * len(row)  # Verde más claro
         elif racha >= 2:
-            return ['background-color: #FFEE58'] * len(row)  # Amarillo
+            return ['background-color: #FFFACD'] * len(row)  # Amarillo más claro
     return [''] * len(row)
 
 # === EQUIPOS DISPONIBLES ===
