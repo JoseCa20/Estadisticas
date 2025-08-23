@@ -784,7 +784,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     # Columnas de goles y remates según si el equipo es local o visitante
     goles_a_favor_col = "goles_local" if tipo_partido == "local" else "goles_visitante"
     goles_en_contra_col = "goles_visitante" if tipo_partido == "local" else "goles_local"
-    goles_ht_favor_col = "1t_goles_favor" 
+    goles_ht_favor_col = "1t_goles_favor"
     goles_ht_contra_col = "1t_goles_contra"
     goles_st_favor_col = "2t_goles_favor"
     goles_st_contra_col = "2t_goles_contra"
@@ -797,7 +797,12 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
     promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
-
+    
+    # Rachas para las medias de goles por tiempo
+    racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
+    racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
+    racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
+    
     # BTTS
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
     btts = btts_cond.mean() * 100
@@ -850,15 +855,17 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             
     # Promedio de remates
     racha_prom_remates = 0
-    prom_remates_ultimos = df_calculo[remates_favor_col].tail(1)
-    if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] > df_calculo[remates_favor_col].mean():
-        racha_prom_remates = sum(df_calculo[remates_favor_col].tail(10) > df_calculo[remates_favor_col].mean())
+    if len(df_calculo) > 0:
+        prom_remates_ultimos = df_calculo[remates_favor_col].tail(1)
+        if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] > df_calculo[remates_favor_col].mean():
+            racha_prom_remates = sum(df_calculo[remates_favor_col].tail(10) > df_calculo[remates_favor_col].mean())
 
     # Promedio de tiros a puerta
     racha_prom_tiros_puerta = 0
-    prom_tiros_puerta_ultimos = df_calculo[a_puerta_favor_col].tail(1)
-    if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
-        racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
+    if len(df_calculo) > 0:
+        prom_tiros_puerta_ultimos = df_calculo[a_puerta_favor_col].tail(1)
+        if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
+            racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
 
 
     return {
@@ -868,7 +875,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T", 
             "BTTS", 
             "Gol HT", 
-            "Over 1.5 Goles",
+            "Over 1.5 Goles Total",
             "Over 2.5 Goles", 
             "Over 1.5 HT",
             "Promedio Remates",
@@ -887,9 +894,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             promedio_tiros_puerta
         ],
         "Racha": [
-            "",
-            "",
-            "",
+            racha_media_gol,
+            racha_media_gol_1t,
+            racha_media_gol_2t,
             racha_btts,
             racha_gol_ht,
             racha_over_1_5_total,
