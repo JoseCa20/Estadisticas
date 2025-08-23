@@ -586,8 +586,8 @@ def calcular_estadisticas(df, tipo):
     if df.empty:
         return {}
     stats = {
-        "Prom. Goles": round(df["goles_local"].mean(), 2) if tipo == "local" else round(df["goles_visitante"].mean(), 2),
-        "Prom. xG": round(df["xg_favor"].mean(), 2),
+        "Prom. Goles": round(df["goles_local"].mean(), 1) if tipo == "local" else round(df["goles_visitante"].mean(), 1),
+        "Prom. xG": round(df["xg_favor"].mean(), 1),
         "Prom. Remates": round(df["shots_favor"].mean(), 1),
         "A puerta": round(df["a_puerta_favor"].mean(), 1),
     }
@@ -790,9 +790,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     a_puerta_favor_col = "a_puerta_favor"
 
     # Goles y remates
-    media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
-    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 2)
-    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
+    media_gol = round(df_calculo[goles_a_favor_col].mean(), 1)
+    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 1)
+    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 1)
     promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
     
@@ -905,10 +905,16 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     }
 
 # === ESTILO DE TABLA ===
-def color_racha_rows(s):
-    df_styler = pd.DataFrame('', index=s.index, columns=s.columns)
-    df_styler['Racha'] = s['Racha'].apply(lambda x: 'background-color: #ffffe0' if 2 <= x <= 4 else ('background-color: #90ee90' if x >= 5 else ''))
-    return df_styler
+def color_racha_rows(df):
+    def color_row(row):
+        racha = row['Racha']
+        if 2 <= racha <= 4:
+            return ['background-color: #ffffe0'] * len(row)  # Amarillo claro
+        elif racha >= 5:
+            return ['background-color: #90ee90'] * len(row)  # Verde claro
+        else:
+            return [''] * len(row)
+    return df.style.apply(color_row, axis=1)
 
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
@@ -926,7 +932,6 @@ if equipo_local_nombre and equipo_visitante_nombre:
     df_local_all = cargar_datos(equipo_local_nombre, "local", 10)
     df_visitante_all = cargar_datos(equipo_visitante_nombre, "visitante", 10)
 
-    # Lógica para la tabla de la imagen
     stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
     stats_visitante = calcular_estadisticas_y_rachas(df_visitante_all, equipo_visitante_nombre, "visitante")
     
@@ -939,17 +944,16 @@ if equipo_local_nombre and equipo_visitante_nombre:
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            st.dataframe(df_stats_local.style.apply(color_racha_rows, axis=None), use_container_width=True, hide_index=True)
+            st.dataframe(color_racha_rows(df_stats_local), use_container_width=True, hide_index=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            st.dataframe(df_stats_visitante.style.apply(color_racha_rows, axis=None), use_container_width=True, hide_index=True)
+            st.dataframe(color_racha_rows(df_stats_visitante), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("## 📈 Predicción del Partido")
     
-    # Lógica de predicción y sugerencias
     resultados = calcular_probabilidades_equipo(df_local_all, df_visitante_all)
     mostrar_resultados(resultados, df_local_all, df_visitante_all)
 
