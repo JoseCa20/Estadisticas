@@ -907,13 +907,17 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 # === ESTILO DE TABLA ===
 def color_racha_rows(df):
     def color_row(row):
-        racha = row['Racha']
-        if 2 <= racha <= 4:
-            return ['background-color: #ffffe0'] * len(row)  # Amarillo claro
-        elif racha >= 5:
-            return ['background-color: #90ee90'] * len(row)  # Verde claro
-        else:
+        try:
+            racha = int(row['Racha'])
+            if 2 <= racha <= 4:
+                return ['background-color: #ffffe0'] * len(row)  # Amarillo claro
+            elif racha >= 5:
+                return ['background-color: #90ee90'] * len(row)  # Verde claro
+            else:
+                return [''] * len(row)
+        except (ValueError, TypeError):
             return [''] * len(row)
+
     return df.style.apply(color_row, axis=1)
 
 # === EQUIPOS DISPONIBLES ===
