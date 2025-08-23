@@ -779,7 +779,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 
     df_calculo = df.copy()
 
-    # Columnas de goles y remates según si el equipo es local o visitante
     goles_a_favor_col = "goles_local" if tipo_partido == "local" else "goles_visitante"
     goles_en_contra_col = "goles_visitante" if tipo_partido == "local" else "goles_local"
     goles_ht_favor_col = "1t_goles_favor"
@@ -789,19 +788,16 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     remates_favor_col = "shots_favor"
     a_puerta_favor_col = "a_puerta_favor"
 
-    # Goles y remates
     media_gol = df_calculo[goles_a_favor_col].mean()
     media_gol_1t = df_calculo[goles_ht_favor_col].mean()
     media_gol_2t = df_calculo[goles_st_favor_col].mean()
     promedio_remates = df_calculo[remates_favor_col].mean()
     promedio_tiros_puerta = df_calculo[a_puerta_favor_col].mean()
     
-    # Rachas para las medias de goles por tiempo
-    racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
-    racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
-    racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
+    racha_media_gol = sum(1 for x in reversed(df_calculo[goles_a_favor_col]) if x > media_gol)
+    racha_media_gol_1t = sum(1 for x in reversed(df_calculo[goles_ht_favor_col]) if x > media_gol_1t)
+    racha_media_gol_2t = sum(1 for x in reversed(df_calculo[goles_st_favor_col]) if x > media_gol_2t)
     
-    # BTTS
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
     btts = btts_cond.mean() * 100
     racha_btts = 0
@@ -811,7 +807,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
 
-    # Gol HT
     gol_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 0
     gol_ht = gol_ht_cond.mean() * 100
     racha_gol_ht = 0
@@ -821,7 +816,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
 
-    # Over 1.5 Goles Totales
     over_1_5_total_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 1.5
     over_1_5_total = over_1_5_total_cond.mean() * 100
     racha_over_1_5_total = 0
@@ -831,7 +825,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
 
-    # Over 2.5 Goles
     over_2_5_cond = (df_calculo[goles_a_favor_col] + df_calculo[goles_en_contra_col]) > 2.5
     over_2_5_goles = over_2_5_cond.mean() * 100
     racha_over_2_5 = 0
@@ -841,7 +834,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
 
-    # Over 1.5 HT
     over_1_5_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 1.5
     over_1_5_ht = over_1_5_ht_cond.mean() * 100
     racha_over_1_5_ht = 0
@@ -851,21 +843,18 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
         else:
             break
             
-    # Promedio de remates
     racha_prom_remates = 0
     if len(df_calculo) > 0:
         prom_remates_ultimos = df_calculo[remates_favor_col].tail(1)
         if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] > df_calculo[remates_favor_col].mean():
             racha_prom_remates = sum(df_calculo[remates_favor_col].tail(10) > df_calculo[remates_favor_col].mean())
 
-    # Promedio de tiros a puerta
     racha_prom_tiros_puerta = 0
     if len(df_calculo) > 0:
         prom_tiros_puerta_ultimos = df_calculo[a_puerta_favor_col].tail(1)
         if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
             racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
 
-    # Devolver un diccionario con las estadísticas
     return {
         "Estadística": [
             "Media Gol", 
@@ -883,11 +872,11 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol,
             media_gol_1t,
             media_gol_2t,
-            f"{btts:.1f}%",  # Ya es un string formateado
-            f"{gol_ht:.1f}%", # Ya es un string formateado
-            f"{over_1_5_total:.1f}%", # Ya es un string formateado
-            f"{over_2_5_goles:.1f}%", # Ya es un string formateado
-            f"{over_1_5_ht:.1f}%", # Ya es un string formateado
+            btts,
+            gol_ht,
+            over_1_5_total,
+            over_2_5_goles,
+            over_1_5_ht,
             promedio_remates,
             promedio_tiros_puerta
         ],
@@ -908,13 +897,15 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 # === ESTILO DE TABLA ===
 def color_racha_rows(row):
     try:
-        racha = int(row['Racha'])
-        if 2 <= racha <= 4:
-            return ['background-color: #ffffe0'] * len(row)  # Amarillo claro
-        elif racha >= 5:
-            return ['background-color: #90ee90'] * len(row)  # Verde claro
-        else:
-            return [''] * len(row)
+        # Aquí la columna "Racha" se accede por su nombre después de pivotar
+        racha_valor = row.get("Racha", 0) 
+        if racha_valor:
+            racha = int(racha_valor)
+            if 2 <= racha <= 4:
+                return ['background-color: #ffffe0'] * len(row)
+            elif racha >= 5:
+                return ['background-color: #90ee90'] * len(row)
+        return [''] * len(row)
     except (ValueError, TypeError):
         return [''] * len(row)
 
@@ -942,30 +933,46 @@ if equipo_local_nombre and equipo_visitante_nombre:
 
     st.markdown("## 📊 Estadísticas Detalladas de los Últimos 10 Partidos")
     col_local_stats, col_visitante_stats = st.columns(2)
-    
+
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            nombre_columna_local = f"{equipo_local_nombre} Local"
-            
-            # --- CAMBIO AQUÍ: Definir las columnas que serán formateadas ---
-            columnas_numericas_local = ["Media Gol", "Media Gol 1T", "Media Gol 2T", "Promedio Remates", "Promedio Tiros a Puerta"]
-            format_dict_local = {col: '{:.1f}' for col in columnas_numericas_local}
-            
-            styled_df_local = df_stats_local.style.format(format_dict_local).apply(color_racha_rows, axis=1)
-            st.dataframe(styled_df_local, use_container_width=True, hide_index=True)
+            df_stats_local_pivot = df_stats_local.set_index('Estadística')
+            styled_df_local = df_stats_local_pivot.T.style.format(
+                {
+                    "Media Gol": "{:.1f}", 
+                    "Media Gol 1T": "{:.1f}",
+                    "Media Gol 2T": "{:.1f}",
+                    "BTTS": "{:.1f}%",
+                    "Gol HT": "{:.1f}%",
+                    "Over 1.5 Goles Total": "{:.1f}%",
+                    "Over 2.5 Goles": "{:.1f}%",
+                    "Over 1.5 HT": "{:.1f}%",
+                    "Promedio Remates": "{:.1f}",
+                    "Promedio Tiros a Puerta": "{:.1f}"
+                }
+            ).apply(color_racha_rows, axis=1)
+            st.dataframe(styled_df_local, use_container_width=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            nombre_columna_visitante = f"{equipo_visitante_nombre} Visitante"
-            
-            # --- CAMBIO AQUÍ: Definir las columnas que serán formateadas ---
-            columnas_numericas_visitante = ["Media Gol", "Media Gol 1T", "Media Gol 2T", "Promedio Remates", "Promedio Tiros a Puerta"]
-            format_dict_visitante = {col: '{:.1f}' for col in columnas_numericas_visitante}
-            
-            styled_df_visitante = df_stats_visitante.style.format(format_dict_visitante).apply(color_racha_rows, axis=1)
-            st.dataframe(styled_df_visitante, use_container_width=True, hide_index=True)
+            df_stats_visitante_pivot = df_stats_visitante.set_index('Estadística')
+            styled_df_visitante = df_stats_visitante_pivot.T.style.format(
+                {
+                    "Media Gol": "{:.1f}",
+                    "Media Gol 1T": "{:.1f}",
+                    "Media Gol 2T": "{:.1f}",
+                    "BTTS": "{:.1f}%",
+                    "Gol HT": "{:.1f}%",
+                    "Over 1.5 Goles Total": "{:.1f}%",
+                    "Over 2.5 Goles": "{:.1f}%",
+                    "Over 1.5 HT": "{:.1f}%",
+                    "Promedio Remates": "{:.1f}",
+                    "Promedio Tiros a Puerta": "{:.1f}"
+                }
+            ).apply(color_racha_rows, axis=1)
+            st.dataframe(styled_df_visitante, use_container_width=True)
 
     st.markdown("---")
     st.markdown("## 📈 Predicción del Partido")
