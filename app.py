@@ -790,11 +790,11 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     a_puerta_favor_col = "a_puerta_favor"
 
     # Goles y remates
-    media_gol = round(df_calculo[goles_a_favor_col].mean(), 1)
-    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 1)
-    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 1)
-    promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
-    promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
+    media_gol = df_calculo[goles_a_favor_col].mean()
+    media_gol_1t = df_calculo[goles_ht_favor_col].mean()
+    media_gol_2t = df_calculo[goles_st_favor_col].mean()
+    promedio_remates = df_calculo[remates_favor_col].mean()
+    promedio_tiros_puerta = df_calculo[a_puerta_favor_col].mean()
     
     # Rachas para las medias de goles por tiempo
     racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
@@ -942,18 +942,31 @@ if equipo_local_nombre and equipo_visitante_nombre:
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
     df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
 
+    # --- CAMBIO AQUÍ: APLICAR FORMATO DE ESTILO ---
+    def aplicar_formato(df, equipo_nombre, tipo_partido):
+        nombre_columna = f"{equipo_nombre} {tipo_partido.title()}"
+        
+        # Diccionario para especificar el formato de cada columna
+        format_dict = {
+            nombre_columna: '{:.1f}'
+        }
+        
+        # Aplicar ambos estilos de forma encadenada
+        styled_df = df.style.format(format_dict).apply(color_racha_rows, axis=1)
+        return styled_df
+
     st.markdown("## 📊 Estadísticas Detalladas de los Últimos 10 Partidos")
     col_local_stats, col_visitante_stats = st.columns(2)
     
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            st.dataframe(color_racha_rows(df_stats_local), use_container_width=True, hide_index=True)
+            st.dataframe(aplicar_formato(df_stats_local, equipo_local_nombre, "local"), use_container_width=True, hide_index=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            st.dataframe(color_racha_rows(df_stats_visitante), use_container_width=True, hide_index=True)
+            st.dataframe(aplicar_formato(df_stats_visitante, equipo_visitante_nombre, "visitante"), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("## 📈 Predicción del Partido")
