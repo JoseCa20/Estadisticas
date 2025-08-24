@@ -962,7 +962,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
             st.dataframe(
-                resaltar_estadistica(df_stats_local),
+                resaltar_estadistica(df_stats_local.format("{:.2f}")),
                 use_container_width=True, hide_index=True
             )
 
@@ -970,7 +970,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
             st.dataframe(
-                resaltar_estadistica(df_stats_visitante),
+                resaltar_estadistica(df_stats_visitante.format("{:.2f}")),
                 use_container_width=True, hide_index=True
             )
 
