@@ -908,20 +908,18 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     }
 
 def resaltar_estadistica(df_stats):
-    def color_filas(val):
+    def color_fila(row):
+        val = row["Racha"]
         if isinstance(val, (int, float)):
             if 2 <= val <= 4:
-                return "background-color: #fff9c4"  # amarillo muy tenue
+                return ["background-color: #fff9c4"] * len(row)  # amarillo muy tenue
             elif val >= 5:
-                return "background-color: #c8e6c9"  # verde muy tenue
-        return ""
+                return ["background-color: #c8e6c9"] * len(row)  # verde muy tenue
+        return [""] * len(row)
     
-    styler = df_stats.style.apply(
-        lambda col: [color_filas(v) for v in df_stats["Racha"]],
-        axis=0, subset=["Estadística"]
-    )
+    styler = df_stats.style.apply(color_fila, axis=1)
 
-    # Formato por columnas
+    # Formato de números con 1 decimal
     styler = styler.format(precision=1)
     
     return styler
