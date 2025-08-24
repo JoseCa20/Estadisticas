@@ -799,29 +799,29 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
     
     # Rachas para las medias de goles por tiempo
-    for i in range(len(df_calculo) -1, -1, -1):
-        fila = df_calculo.iloc[i]
-        if fila[goles_a_favor_col] > media_gol:
+    racha_media_gol = 0
+    cond_media_gol = df_calculo[goles_a_favor_col] > media_gol
+    for i in range(len(cond_media_gol) - 1, -1, -1):
+        if cond_media_gol.iloc[i]:
             racha_media_gol += 1
         else:
             break
 
-    for i in range(len(df_calculo) - 1, -1, -1):
-        fila = df_calculo.iloc[i]
-        if fila[goles_ht_favor_col] > media_gol_1t:
-            racha_goles_1T += 1
+    racha_media_gol_1t = 0
+    cond_media_gol_1t = df_calculo[goles_ht_favor_col] > media_gol_1t
+    for i in range(len(cond_media_gol_1t) - 1, -1, -1):
+        if cond_media_gol_1t.iloc[i]:
+            racha_media_gol_1t += 1
         else:
             break
 
-    for i in range(len(df_calculo) - 1, -1, -1):
-        fila = df_calculo.iloc[i]
-        if fila[goles_st_favor_col] > media_gol_2t:
-            racha_goles_2T += 1
+    racha_media_gol_2t = 0
+    cond_media_gol_2t = df_calculo[goles_st_favor_col] > media_gol_2t
+    for i in range(len(cond_media_gol_2t) - 1, -1, -1):
+        if cond_media_gol_2t.iloc[i]:
+            racha_media_gol_2t += 1
         else:
             break
-    # racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
-    # racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
-    # racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
     
     # BTTS
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
@@ -895,9 +895,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T", 
             "BTTS", 
             "Gol HT", 
-            "Over 1.5 Goles Total",
-            "Over 2.5 Goles", 
             "Over 1.5 HT",
+            "Over 1.5 Goles",
+            "Over 2.5 Goles",             
             "Promedio Remates",
             "Promedio Tiros a Puerta"
         ],
@@ -907,9 +907,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol_2t,
             f"{btts:.1f}%",
             f"{gol_ht:.1f}%",
-            f"{over_1_5_total:.1f}%",
-            f"{over_2_5_goles:.1f}%",
             f"{over_1_5_ht:.1f}%",
+            f"{over_1_5_total:.1f}%",
+            f"{over_2_5_goles:.1f}%",            
             promedio_remates,
             promedio_tiros_puerta
         ],
