@@ -911,6 +911,17 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
 equipos_disponibles = sorted(archivos)
 
+# === LÓGICA DE ESTILOS ===
+def highlight_racha(row):
+    racha_value = row['Racha']
+    if 2 <= racha_value <= 4:
+        color = '#fefedc'  # Amarillo claro
+    elif racha_value >= 5:
+        color = '#d4fcd4'  # Verde claro
+    else:
+        color = ''
+    return [f'background-color: {color}'] * len(row)
+
 # === UI SELECCIÓN ===
 col1, col2 = st.columns(2)
 with col1:
@@ -936,18 +947,16 @@ if equipo_local_nombre and equipo_visitante_nombre:
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            st.dataframe(df_stats_local, use_container_width=True, hide_index=True, column_config={
-                f"{equipo_local_nombre} Local": st.column_config.Column(width="medium"),
-                "Racha": st.column_config.Column(width="small")
-            })
+            # Aplicar el estilo de fondo de fila
+            styled_df_local = df_stats_local.style.apply(highlight_racha, axis=1)
+            st.dataframe(styled_df_local, use_container_width=True, hide_index=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            st.dataframe(df_stats_visitante, use_container_width=True, hide_index=True, column_config={
-                f"{equipo_visitante_nombre} Visitante": st.column_config.Column(width="medium"),
-                "Racha": st.column_config.Column(width="small")
-            })
+            # Aplicar el estilo de fondo de fila
+            styled_df_visitante = df_stats_visitante.style.apply(highlight_racha, axis=1)
+            st.dataframe(styled_df_visitante, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("## 📈 Predicción del Partido")
