@@ -800,7 +800,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     
     # Rachas para las medias de goles por tiempo
     racha_media_gol = 0
-    cond_media_gol = df_calculo[goles_a_favor_col] > media_gol
+    cond_media_gol = df_calculo[goles_a_favor_col] >= media_gol
     for i in range(len(cond_media_gol) - 1, -1, -1):
         if cond_media_gol.iloc[i]:
             racha_media_gol += 1
@@ -808,7 +808,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     racha_media_gol_1t = 0
-    cond_media_gol_1t = df_calculo[goles_ht_favor_col] > media_gol_1t
+    cond_media_gol_1t = df_calculo[goles_ht_favor_col] >= media_gol_1t
     for i in range(len(cond_media_gol_1t) - 1, -1, -1):
         if cond_media_gol_1t.iloc[i]:
             racha_media_gol_1t += 1
@@ -816,7 +816,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             break
 
     racha_media_gol_2t = 0
-    cond_media_gol_2t = df_calculo[goles_st_favor_col] > media_gol_2t
+    cond_media_gol_2t = df_calculo[goles_st_favor_col] >= media_gol_2t
     for i in range(len(cond_media_gol_2t) - 1, -1, -1):
         if cond_media_gol_2t.iloc[i]:
             racha_media_gol_2t += 1
@@ -919,9 +919,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_media_gol_2t,
             racha_btts,
             racha_gol_ht,
-            racha_over_1_5_total,
-            racha_over_2_5,
             racha_over_1_5_ht,
+            racha_over_1_5_total,
+            racha_over_2_5,            
             racha_prom_remates,
             racha_prom_tiros_puerta
         ],
