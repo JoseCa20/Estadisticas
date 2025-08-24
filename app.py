@@ -922,13 +922,7 @@ def resaltar_estadistica(df_stats):
     )
 
     # Formato por columnas
-    for col in df_stats.columns:
-        if "Promedio" in col or "Media" in col:   # columnas numéricas continuas
-            styler = styler.format({col: "{:.1f}"})
-        elif "%" in df_stats[col].astype(str).iloc[0]:  # columnas con %
-            styler = styler.format({col: "{:.1%}"})
-        elif col == "Racha":
-            styler = styler.format({col: "{:d}"})
+    styler = styler.format(precision=1)
     
     return styler
 
