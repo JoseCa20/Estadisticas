@@ -916,11 +916,21 @@ def resaltar_estadistica(df_stats):
                 return "background-color: #c8e6c9"  # verde muy tenue
         return ""
     
-    # Aplicamos estilo según "Racha" sobre la columna "Estadística"
-    return df_stats.style.apply(
+    styler = df_stats.style.apply(
         lambda col: [color_filas(v) for v in df_stats["Racha"]],
         axis=0, subset=["Estadística"]
     )
+
+    # Formato por columnas
+    for col in df_stats.columns:
+        if "Promedio" in col or "Media" in col:   # columnas numéricas continuas
+            styler = styler.format({col: "{:.1f}"})
+        elif "%" in df_stats[col].astype(str).iloc[0]:  # columnas con %
+            styler = styler.format({col: "{:.1%}"})
+        elif col == "Racha":
+            styler = styler.format({col: "{:d}"})
+    
+    return styler
 
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
