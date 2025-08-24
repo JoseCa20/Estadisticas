@@ -799,9 +799,29 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
     
     # Rachas para las medias de goles por tiempo
-    racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
-    racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
-    racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
+    for i in range(len(df_calculo) -1, -1, -1):
+        fila = df_calculo.iloc[i]
+        if fila[goles_a_favor_col] > media_gol:
+            racha_media_gol += 1
+        else:
+            break
+
+    for i in range(len(df_calculo) - 1, -1, -1):
+        fila = df_calculo.iloc[i]
+        if fila[goles_ht_favor_col] > media_gol_1t:
+            racha_goles_1T += 1
+        else:
+            break
+
+    for i in range(len(df_calculo) - 1, -1, -1):
+        fila = df_calculo.iloc[i]
+        if fila[goles_st_favor_col] > media_gol_2t:
+            racha_goles_2T += 1
+        else:
+            break
+    # racha_media_gol = (df_calculo[goles_a_favor_col] > media_gol).sum()
+    # racha_media_gol_1t = (df_calculo[goles_ht_favor_col] > media_gol_1t).sum()
+    # racha_media_gol_2t = (df_calculo[goles_st_favor_col] > media_gol_2t).sum()
     
     # BTTS
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
