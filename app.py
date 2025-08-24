@@ -877,14 +877,14 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     racha_prom_remates = 0
     if len(df_calculo) > 0:
         prom_remates_ultimos = df_calculo[remates_favor_col].tail(1)
-        if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] > df_calculo[remates_favor_col].mean():
+        if not prom_remates_ultimos.empty and prom_remates_ultimos.iloc[0] >= df_calculo[remates_favor_col].mean():
             racha_prom_remates = sum(df_calculo[remates_favor_col].tail(10) > df_calculo[remates_favor_col].mean())
 
     # Promedio de tiros a puerta
     racha_prom_tiros_puerta = 0
     if len(df_calculo) > 0:
         prom_tiros_puerta_ultimos = df_calculo[a_puerta_favor_col].tail(1)
-        if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] > df_calculo[a_puerta_favor_col].mean():
+        if not prom_tiros_puerta_ultimos.empty and prom_tiros_puerta_ultimos.iloc[0] >= df_calculo[a_puerta_favor_col].mean():
             racha_prom_tiros_puerta = sum(df_calculo[a_puerta_favor_col].tail(10) > df_calculo[a_puerta_favor_col].mean())
 
 
