@@ -912,15 +912,16 @@ archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswi
 equipos_disponibles = sorted(archivos)
 
 # === LÓGICA DE ESTILOS ===
-def highlight_racha(row):
-    racha_value = row['Racha']
-    if 2 <= racha_value <= 4:
-        color = '#fefedc'  # Amarillo claro
-    elif racha_value >= 5:
-        color = '#d4fcd4'  # Verde claro
-    else:
-        color = ''
-    return [f'background-color: {color}'] * len(row)
+def highlight_racha(col):
+    """Aplica color a la columna 'Estadística' según el valor de 'Racha'."""
+    racha_values = col.loc[col.index, 'Racha']
+    colors = [''] * len(col)
+    for i, racha in enumerate(racha_values):
+        if 2 <= racha <= 4:
+            colors[i] = '#fefedc'  # Amarillo claro
+        elif racha >= 5:
+            colors[i] = '#d4fcd4'  # Verde claro
+    return [f'background-color: {color}' for color in colors]
 
 # === UI SELECCIÓN ===
 col1, col2 = st.columns(2)
@@ -947,15 +948,15 @@ if equipo_local_nombre and equipo_visitante_nombre:
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            # Aplicar el estilo de fondo de fila
-            styled_df_local = df_stats_local.style.apply(highlight_racha, axis=1)
+            # Estilo de la columna 'Estadística'
+            styled_df_local = df_stats_local.style.apply(highlight_racha, subset=['Estadística'], axis=None)
             st.dataframe(styled_df_local, use_container_width=True, hide_index=True)
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            # Aplicar el estilo de fondo de fila
-            styled_df_visitante = df_stats_visitante.style.apply(highlight_racha, axis=1)
+            # Estilo de la columna 'Estadística'
+            styled_df_visitante = df_stats_visitante.style.apply(highlight_racha, subset=['Estadística'], axis=None)
             st.dataframe(styled_df_visitante, use_container_width=True, hide_index=True)
 
     st.markdown("---")
