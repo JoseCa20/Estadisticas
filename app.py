@@ -1075,18 +1075,12 @@ if equipo_local_nombre and equipo_visitante_nombre:
     with col_local_stats:
         st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
-            st.dataframe(
-                resaltar_estadistica(df_stats_local),
-                use_container_width=True, hide_index=True
-            )
+            st.table(resaltar_estadistica(df_stats_local))
 
     with col_visitante_stats:
         st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
-            st.dataframe(
-                resaltar_estadistica(df_stats_visitante),
-                use_container_width=True, hide_index=True
-            )
+            st.table(resaltar_estadistica(df_stats_visitante))
 
     st.markdown("---")
     st.markdown("## 📈 Predicción del Partido")
