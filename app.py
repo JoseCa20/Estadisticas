@@ -1031,19 +1031,51 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 
 def resaltar_estadistica(df_stats):
     def color_fila(row):
+        # Nombres de las estadísticas que tendrán color condicional por porcentaje
+        estadisticas_porcentaje = [
+            "BTTS", "Gol HT", "Over 1.5 HT", "Over 1.5 Goles", "Over 2.5 Goles"
+        ]
+
+        # Verificar si la fila actual es una de las estadísticas de porcentaje
+        if row["Estadística"] in estadisticas_porcentaje:
+            try:
+                # Convertir el valor de porcentaje a un float
+                porcentaje_str = row[df_stats.columns[1]].replace("%", "").strip()
+                porcentaje = float(porcentaje_str)
+                racha = row["Racha"]
+                
+                # Definir los colores
+                amarillo = "background-color: #fff9c4"
+                verde = "background-color: #c8e6c9"
+                azul_claro = "background-color: #bbdefb" # Un color azul claro
+
+                # Aplicar la lógica de color condicional
+                if porcentaje >= 75 and isinstance(racha, (int, float)) and racha >= 3:
+                    return [azul_claro] * len(row)
+                elif porcentaje >= 75:
+                    return [verde] * len(row)
+                elif 60 <= porcentaje < 75:
+                    return [amarillo] * len(row)
+                else:
+                    return [""] * len(row)
+            except (ValueError, KeyError):
+                # En caso de error, no aplicar ningún color
+                return [""] * len(row)
+        
+        # Lógica original para las demás estadísticas (basada en Racha)
         val = row["Racha"]
         if isinstance(val, (int, float)):
             if 2 <= val <= 4:
-                return ["background-color: #fff9c4"] * len(row)  # amarillo muy tenue
+                return ["background-color: #fff9c4"] * len(row)
             elif val >= 5:
-                return ["background-color: #c8e6c9"] * len(row)  # verde muy tenue
+                return ["background-color: #c8e6c9"] * len(row)
         return [""] * len(row)
-
+    
     styler = df_stats.style.apply(color_fila, axis=1)
 
     # Formato de números con 1 decimal
     styler = styler.format(precision=1)
-
+    
     return styler
 
 # === EQUIPOS DISPONIBLES ===
