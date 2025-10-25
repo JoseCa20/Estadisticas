@@ -3,7 +3,8 @@ import pandas as pd
 import os
 from collections import Counter
 from scipy.stats import poisson
-import altair as alt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -20,6 +21,7 @@ mapa_equipos = {
 "aberdeen-fc": "aberdeen",
 "ac-milan": "ac milan",
 "ac-monza": "monza",
+"ac-pisa-1909": "pisa",
 "academia-del-balompie-boliviano": "abb",
 "acf-fiorentina": "fiorentina",
 "ad-ceuta-fc": "ceuta",
@@ -270,10 +272,12 @@ mapa_equipos = {
 "fc-koln": "fc koln",
 "fc-lausanne-sport": "lausanne",
 "fc-lokomotiv-1929-sofia": "lok. sofia",
+"fc-lorient": "lorient",
 "fc-lugano": "lugano",
 "fc-luzern": "luzern",
 "fc-magdeburg": "magdeburg",
 "fc-metaloglobus-bucuresti": "metaloglobus bucharest",
+"fc-metz": "metz",
 "fc-midtjylland": "midtjylland",
 "fc-montana": "montana",
 "fc-nantes": "nantes",
@@ -440,6 +444,7 @@ mapa_equipos = {
 "osijek": "osijek",
 "osters-if": "oster",
 "oxford-united-fc": "oxford utd",
+"paris-fc": "paris fc",
 "paris-saint-germain-fc": "psg",
 "parma-calcio-1913": "parma",
 "pec-zwolle": "zwolle",
@@ -566,7 +571,9 @@ mapa_equipos = {
 "union-la-calera": "u. calera",
 "union-magdalena": "u. magdalena",
 "universidad-tecnica-de-cajamarca": "cajamarca",
+"us-cremonese": "cremonese",
 "us-lecce": "lecce",
+"us-sassuolo-calcio": "sassuolo",
 "valencia-cf": "valencia",
 "valerenga-fotball": "valerenga",
 "vancouver-whitecaps-fc": "vancouver whitecaps",
@@ -589,7 +596,7 @@ mapa_equipos = {
 "wolverhampton-wanderers-fc": "wolves",
 "wrexham-afc": "wrexham",
 "wsg-swarovski-tirol": "tirol",
-"zaglebie-lubin": "zaglebie" 
+"zaglebie-lubin": "zaglebie"
 }
 
 # === CARGAR DATOS DEL EQUIPO ===
@@ -597,36 +604,23 @@ def cargar_datos(equipo_archivo, condicion="local", n=10):
     archivo = f"new-stats/{equipo_archivo}.xlsx"
     try:
         df = pd.read_excel(archivo)
-        # Asumiendo que 'normalizar_columnas' y 'mapa_equipos' están definidos
-        # df = normalizar_columnas(df) 
-        
+        df = normalizar_columnas(df)
+
         columnas_numericas = [
             "goles_local", "goles_visitante", "xg_favor", "xg_contra", "shots_favor", "a_puerta_favor",
             "1t_goles_favor", "2t_goles_favor", "1t_goles_contra", "2t_goles_contra"
         ]
         for col in columnas_numericas:
             if col in df.columns:
-                # Asegura que sean numéricos, convirtiendo errores a NaN (necesario para el manejo de faltantes)
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-        
-        # Filtrar por el nombre del equipo
+        # Filtra por el nombre del equipo, no por el nombre del archivo
         nombre_equipo = mapa_equipos.get(equipo_archivo, equipo_archivo.replace("-", " ").lower())
-        
-        # Manejo más robusto del nombre del equipo
-        if 'equipo_local' not in df.columns or 'visitante' not in df.columns:
-            st.warning("Columnas 'equipo_local' o 'visitante' faltantes en el DataFrame.")
-            return pd.DataFrame()
-            
         if condicion == "local":
-            df_filtrado = df[df["equipo_local"].str.lower().str.contains(nombre_equipo.lower(), na=False)]
+            df_filtrado = df[df["equipo_local"].str.lower().str.contains(nombre_equipo, na=False)]
         else:
-            df_filtrado = df[df["visitante"].str.lower().str.contains(nombre_equipo.lower(), na=False)]
+            df_filtrado = df[df["visitante"].str.lower().str.contains(nombre_equipo, na=False)]
 
-        # Retorna los últimos 'n' partidos, asegurando que la columna 'fecha' exista para ordenar
-        if 'fecha' in df_filtrado.columns:
-            df_filtrado = df_filtrado.sort_values(by="fecha", ascending=True)
-        
-        return df_filtrado.tail(n).reset_index(drop=True)
+        return df_filtrado.tail(n)
 
     except Exception as e:
         st.error(f"❌ Error al cargar datos para {equipo_archivo}: {e}")
@@ -871,6 +865,140 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
 
+# === GRÁFICOS DE TENDENCIA (NUEVA FUNCIÓN) ===
+def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
+    if df.empty:
+        st.warning(f"No hay datos de últimos partidos para {equipo_nombre}.")
+        return
+
+    # 1. Definir columnas de goles y rival
+    if tipo_partido == "local":
+        goles_favor_col = "goles_local"
+        goles_contra_col = "goles_visitante"
+        rival_col = "visitante"
+    else: # visitante
+        goles_favor_col = "goles_visitante"
+        goles_contra_col = "goles_local"
+        rival_col = "equipo_local"
+
+    # Preparar el eje X (Rival y número de partido para mejor visualización)
+    # Se usa el nombre del rival en mayúsculas para las etiquetas.
+    x_data = [f"{rival.upper()}" for rival in df[rival_col]]
+
+    # --- GRÁFICO DE ATAQUE (A FAVOR) ---
+    fig_ataque = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Barra: Goles Anotados
+    fig_ataque.add_trace(
+        go.Bar(
+            x=x_data, y=df[goles_favor_col], name='Goles Anotados',
+            text=df[goles_favor_col], textposition='auto',
+            marker_color='blue' if tipo_partido == "local" else 'red'
+        ),
+        secondary_y=False,
+    )
+
+    # Línea 1: xG a Favor
+    fig_ataque.add_trace(
+        go.Scatter(
+            x=x_data, y=df["xg_favor"], name='xG', mode='lines+markers',
+            line=dict(color='green', width=3),
+            text=df["xg_favor"].round(2), textposition="top center"
+        ),
+        secondary_y=True,
+    )
+    
+    # Línea 2: Tiros a Puerta (A Favor)
+    fig_ataque.add_trace(
+        go.Scatter(
+            x=x_data, y=df["a_puerta_favor"], name='Tiros a Puerta', mode='lines+markers',
+            line=dict(color='orange', width=3),
+            text=df["a_puerta_favor"].round(1), textposition="bottom center"
+        ),
+        secondary_y=True,
+    )
+    
+    mediana_goles = df[goles_favor_col].median()
+    
+    fig_ataque.add_hline(
+        y=mediana_goles,
+        line_dash="dot",
+        line_color="gray",
+        annotation_text=f"Mediana: {mediana_goles:.1f}",
+        annotation_position="top left"
+    )
+
+    # Configuración del Eje y Título
+    fig_ataque.update_layout(
+        title_text=f"**{equipo_nombre}** - Tendencia de ATAQUE (vs Rivales)",
+        xaxis_title="Rivales Enfrentados (Partidos Recientes)",
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=100)
+    )
+    fig_ataque.update_yaxes(title_text="Goles Anotados", secondary_y=False, showgrid=False)
+    fig_ataque.update_yaxes(title_text="xG / Tiros a Puerta", secondary_y=True, showgrid=True)
+    st.plotly_chart(fig_ataque, use_container_width=True, config={"staticPlot": True})
+
+
+    # --- GRÁFICO DE DEFENSA (EN CONTRA) ---
+    # Nota: No tenemos la columna 'a_puerta_contra', por lo que usaremos 'xg_favor' como proxy de 'Presión/Control de Juego'
+    # en la segunda línea para cumplir con la estructura de dos líneas, junto con xG_Contra.
+    fig_defensa = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Barra: Goles Recibidos
+    fig_defensa.add_trace(
+        go.Bar(
+            x=x_data, y=df[goles_contra_col], name='Goles Recibidos',
+            text=df[goles_contra_col], textposition='auto',
+            marker_color='darkred'
+        ),
+        secondary_y=False,
+    )
+
+    # Línea 1: xG en Contra
+    fig_defensa.add_trace(
+        go.Scatter(
+            x=x_data, y=df["xg_contra"], name='xG en Contra', mode='lines+markers',
+            line=dict(color='purple', width=3),
+            text=df["xg_contra"].round(2), textposition="top center"
+        ),
+        secondary_y=True,
+    )
+    
+    # Línea 2: Tiros a Puerta *EN CONTRA* (Usando Shots Favor como PROXY/Control)
+    fig_defensa.add_trace(
+        go.Scatter(
+            x=x_data, y=df["shots_favor"], name='Remates Totales', mode='lines+markers',
+            line=dict(color='teal', width=3),
+            text=df["shots_favor"].round(1), textposition="bottom center"
+        ),
+        secondary_y=True,
+    )
+    
+    mediana_goles_contra = df[goles_contra_col].median()
+    fig_defensa.add_hline(
+        y=mediana_goles_contra,
+        line_dash="dot",
+        line_color="gray",
+        annotation_text=f"Mediana: {mediana_goles_contra:.1f}",
+        annotation_position="top left"
+    )
+
+
+    # Configuración del Eje y Título
+    fig_defensa.update_layout(
+        title_text=f"**{equipo_nombre}** - Tendencia de DEFENSA (vs Rivales)",
+        xaxis_title="Rivales Enfrentados (Partidos Recientes)",
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=100)
+    )
+    fig_defensa.update_yaxes(title_text="Goles Recibidos", secondary_y=False, showgrid=False)
+    fig_defensa.update_yaxes(title_text="xG en Contra / Remates Totales", secondary_y=True, showgrid=True)
+    st.plotly_chart(fig_defensa, use_container_width=True, config={"staticPlot": True})
+
+
 # === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
 def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     if df.empty:
@@ -889,6 +1017,22 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     xg_contra_col = "xg_contra"
     remates_favor_col = "shots_favor"
     a_puerta_favor_col = "a_puerta_favor"
+
+    # Goles y remates
+    media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
+    media_gol_recibido = round(df_calculo[goles_en_contra_col].mean(), 2)
+    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 2)
+    media_gol_1t_recibido = round(df_calculo[goles_ht_contra_col].mean(), 2)
+    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
+    media_gol_2t_recibido = round(df_calculo[goles_st_contra_col].mean(), 2)
+    promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
+    promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
+    media_xg_favor = round(df_calculo[xg_favor_col].mean(), 2)
+    media_xg_contra = round(df_calculo[xg_contra_col].mean(), 2)
+
+    # Eficiencias
+    eficiencia_ofensiva = round((media_gol / media_xg_favor) * 100, 1) if media_xg_favor > 0 else 0
+    eficiencia_defensiva = round((media_gol_recibido / media_xg_contra) * 100, 1) if media_xg_contra > 0 else 0
 
     # Funciones para calcular rachas genéricas
     def calcular_racha(df, col, promedio):
@@ -914,53 +1058,26 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
                 break
         return racha
 
-    # Goles y remates
-    media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
-    media_gol_recibido = round(df_calculo[goles_en_contra_col].mean(), 2)
-    media_gol_1t = round(df_calculo[goles_ht_favor_col].mean(), 2)
-    media_gol_1t_recibido = round(df_calculo[goles_ht_contra_col].mean(), 2)
-    media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
-    media_gol_2t_recibido = round(df_calculo[goles_st_contra_col].mean(), 2)
-    promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
-    promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
-    
-    # Manejo de NaNs en xG
-    media_xg_favor = round(df_calculo[xg_favor_col].mean(), 2) if df_calculo[xg_favor_col].notna().any() else 0
-    media_xg_contra = round(df_calculo[xg_contra_col].mean(), 2) if df_calculo[xg_contra_col].notna().any() else 0
 
-    # Eficiencias (Manejo de división por cero y NaNs)
-    eficiencia_ofensiva = round((media_gol / media_xg_favor) * 100, 1) if media_xg_favor > 0 else 0
-    eficiencia_defensiva = round((media_gol_recibido / media_xg_contra) * 100, 1) if media_xg_contra > 0 else 0
+    # Rachas para las medias de goles por tiempo
+    racha_media_gol = calcular_racha(df_calculo, goles_a_favor_col, media_gol)
+    racha_media_gol_recibido = calcular_racha(df_calculo, goles_en_contra_col, media_gol_recibido)
+    racha_media_gol_1t = calcular_racha(df_calculo, goles_ht_favor_col, media_gol_1t)
+    racha_media_gol_1t_recibido = calcular_racha(df_calculo, goles_ht_contra_col, media_gol_1t_recibido)
+    racha_media_gol_2t = calcular_racha(df_calculo, goles_st_favor_col, media_gol_2t)
+    racha_media_gol_2t_recibido = calcular_racha(df_calculo, goles_st_contra_col, media_gol_2t_recibido)
 
-    # Condicionales para las estadísticas de "Marca Gol" y "Recibe Gol"
-    marca_gol_cond = df_calculo[goles_a_favor_col] >= 1
-    recibe_gol_cond = df_calculo[goles_en_contra_col] >= 1
-    marca_gol_1t_cond = df_calculo[goles_ht_favor_col] >= 1
-    recibe_gol_1t_cond = df_calculo[goles_ht_contra_col] >= 1
-    marca_gol_2t_cond = df_calculo[goles_st_favor_col] >= 1
-    recibe_gol_2t_cond = df_calculo[goles_st_contra_col] >= 1
+    # Rachas de xG y remates
+    racha_media_xg_favor = calcular_racha(df_calculo, xg_favor_col, media_xg_favor)
+    racha_media_xg_contra = calcular_racha(df_calculo, xg_contra_col, media_xg_contra)
+    racha_prom_remates = calcular_racha(df_calculo, remates_favor_col, promedio_remates)
+    racha_prom_tiros_puerta = calcular_racha(df_calculo, a_puerta_favor_col, promedio_tiros_puerta)
 
-    # Cálculos de rachas
-    racha_marca_gol = calcular_racha_booleana(df_calculo, marca_gol_cond)
-    racha_recibe_gol = calcular_racha_booleana(df_calculo, recibe_gol_cond)
-    racha_marca_gol_1t = calcular_racha_booleana(df_calculo, marca_gol_1t_cond)
-    racha_recibe_gol_1t = calcular_racha_booleana(df_calculo, recibe_gol_1t_cond)
-    racha_marca_gol_2t = calcular_racha_booleana(df_calculo, marca_gol_2t_cond)
-    racha_recibe_gol_2t = calcular_racha_booleana(df_calculo, recibe_gol_2t_cond)
-    
-    # Porcentajes
-    marca_gol_porc = marca_gol_cond.mean() * 100
-    recibe_gol_porc = recibe_gol_cond.mean() * 100
-    marca_gol_1t_porc = marca_gol_1t_cond.mean() * 100
-    recibe_gol_1t_porc = recibe_gol_1t_cond.mean() * 100
-    marca_gol_2t_porc = marca_gol_2t_cond.mean() * 100
-    recibe_gol_2t_porc = recibe_gol_2t_cond.mean() * 100
-
-    # Las demás estadísticas y sus rachas
+    # BTTS y Over Goles
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
     btts = btts_cond.mean() * 100
     racha_btts = calcular_racha_booleana(df_calculo, btts_cond)
-    
+
     gol_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 0
     gol_ht = gol_ht_cond.mean() * 100
     racha_gol_ht = calcular_racha_booleana(df_calculo, gol_ht_cond)
@@ -977,22 +1094,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     over_1_5_ht = over_1_5_ht_cond.mean() * 100
     racha_over_1_5_ht = calcular_racha_booleana(df_calculo, over_1_5_ht_cond)
 
-    racha_prom_remates = calcular_racha_booleana(df_calculo, df_calculo[remates_favor_col] >= promedio_remates)
-    racha_prom_tiros_puerta = calcular_racha_booleana(df_calculo, df_calculo[a_puerta_favor_col] >= promedio_tiros_puerta)
-
-    # Rachas para las medias de goles por tiempo (usando la lógica de comparación con la media)
-    racha_media_gol = calcular_racha(df_calculo, goles_a_favor_col, media_gol)
-    racha_media_gol_recibido = calcular_racha(df_calculo, goles_en_contra_col, media_gol_recibido)
-    racha_media_gol_1t = calcular_racha(df_calculo, goles_ht_favor_col, media_gol_1t)
-    racha_media_gol_1t_recibido = calcular_racha(df_calculo, goles_ht_contra_col, media_gol_1t_recibido)
-    racha_media_gol_2t = calcular_racha(df_calculo, goles_st_favor_col, media_gol_2t)
-    racha_media_gol_2t_recibido = calcular_racha(df_calculo, goles_st_contra_col, media_gol_2t_recibido)
-
-    # Rachas de xG y remates
-    racha_media_xg_favor = calcular_racha(df_calculo, xg_favor_col, media_xg_favor)
-    racha_media_xg_contra = calcular_racha(df_calculo, xg_contra_col, media_xg_contra)
-
-
     return {
         "Estadística": [
             "Media Gol",
@@ -1003,21 +1104,13 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T Recibido",
             "Media xG",
             "Media xG Recibido",
-            # Nuevas estadísticas de goles marcados/recibidos
-            "Marca Gol",
-            "Marca Gol 1T",
-            "Marca Gol 2T",
-            "Recibe Gol",
-            "Recibe Gol 1T",
-            "Recibe Gol 2T",
-            # Continuación de estadísticas
             "Eficiencia Ofensiva",
             "Eficiencia Defensiva",
             "BTTS",
             "Gol HT",
+            "Over 1.5 HT",
             "Over 1.5 Goles",
             "Over 2.5 Goles",
-            "Over 1.5 HT",
             "Promedio Remates",
             "Promedio Tiros a Puerta"
         ],
@@ -1030,48 +1123,32 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol_2t_recibido,
             media_xg_favor,
             media_xg_contra,
-            # Valores de las nuevas estadísticas (se pasan como números)
-            marca_gol_porc,
-            marca_gol_1t_porc,
-            marca_gol_2t_porc,
-            recibe_gol_porc,
-            recibe_gol_1t_porc,
-            recibe_gol_2t_porc,
-            # Continuación de valores (se pasan como números)
-            eficiencia_ofensiva,
-            eficiencia_defensiva,
-            btts,
-            gol_ht,
-            over_1_5_total,
-            over_2_5_goles,
-            over_1_5_ht,
+            f"{eficiencia_ofensiva:.1f}%",
+            f"{eficiencia_defensiva:.1f}%",
+            f"{btts:.1f}%",
+            f"{gol_ht:.1f}%",
+            f"{over_1_5_ht:.1f}%",
+            f"{over_1_5_total:.1f}%",
+            f"{over_2_5_goles:.1f}%",
             promedio_remates,
             promedio_tiros_puerta
         ],
         "Racha": [
-            racha_media_gol, # Racha de media
-            racha_media_gol_recibido, # Racha de media
-            racha_media_gol_1t, # Racha de media
-            racha_media_gol_1t_recibido, # Racha de media
-            racha_media_gol_2t, # Racha de media
-            racha_media_gol_2t_recibido, # Racha de media
-            racha_media_xg_favor, # Racha de xG
-            racha_media_xg_contra, # Racha de xG
-            # Valores de racha para las nuevas estadísticas
-            racha_marca_gol,
-            racha_marca_gol_1t,
-            racha_marca_gol_2t,
-            racha_recibe_gol,
-            racha_recibe_gol_1t,
-            racha_recibe_gol_2t,
-            # Continuación de valores de racha
+            racha_media_gol,
+            racha_media_gol_recibido,
+            racha_media_gol_1t,
+            racha_media_gol_1t_recibido,
+            racha_media_gol_2t,
+            racha_media_gol_2t_recibido,
+            racha_media_xg_favor,
+            racha_media_xg_contra,
             "N/A", # Eficiencia ofensiva no tiene racha
             "N/A", # Eficiencia defensiva no tiene racha
             racha_btts,
             racha_gol_ht,
+            racha_over_1_5_ht,
             racha_over_1_5_total,
             racha_over_2_5,
-            racha_over_1_5_ht,
             racha_prom_remates,
             racha_prom_tiros_puerta
         ],
@@ -1079,145 +1156,52 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
 
 def resaltar_estadistica(df_stats):
     def color_fila(row):
-        # Colores
-        amarillo = "background-color: #fff9c4"
-        verde = "background-color: #c8e6c9"
-        
-        # Lógica para colorear por racha (para todas las estadísticas con racha numérica)
-        racha_val = row["Racha"]
-        if isinstance(racha_val, (int, float)):
-            if racha_val >= 5:
-                return [verde] * len(row)
-            elif 2 <= racha_val <= 4:
-                return [amarillo] * len(row)
-        
-        return [""] * len(row)
+        # Nombres de las estadísticas que tendrán color condicional por porcentaje
+        estadisticas_porcentaje = [
+            "BTTS", "Gol HT", "Over 1.5 HT", "Over 1.5 Goles", "Over 2.5 Goles"
+        ]
 
+        # Verificar si la fila actual es una de las estadísticas de porcentaje
+        if row["Estadística"] in estadisticas_porcentaje:
+            try:
+                # Convertir el valor de porcentaje a un float
+                porcentaje_str = row[df_stats.columns[1]].replace("%", "").strip()
+                porcentaje = float(porcentaje_str)
+                racha = row["Racha"]
+                
+                # Definir los colores
+                amarillo = "background-color: #fff9c4"
+                verde = "background-color: #c8e6c9"
+                azul_claro = "background-color: #bbdefb" # Un color azul claro
+
+                # Aplicar la lógica de color condicional
+                if porcentaje >= 75 and isinstance(racha, (int, float)) and racha >= 3:
+                    return [azul_claro] * len(row)
+                elif porcentaje >= 75:
+                    return [verde] * len(row)
+                elif 60 <= porcentaje < 75:
+                    return [amarillo] * len(row)
+                else:
+                    return [""] * len(row)
+            except (ValueError, KeyError):
+                # En caso de error, no aplicar ningún color
+                return [""] * len(row)
+        
+        # Lógica original para las demás estadísticas (basada en Racha)
+        val = row["Racha"]
+        if isinstance(val, (int, float)):
+            if 2 <= val <= 4:
+                return ["background-color: #fff9c4"] * len(row)
+            elif val >= 5:
+                return ["background-color: #c8e6c9"] * len(row)
+        return [""] * len(row)
+    
     styler = df_stats.style.apply(color_fila, axis=1)
 
-    # Listas de estadísticas para formateo
-    stats_precision_2 = ["Media Gol", "Media Gol Recibido", "Media Gol 1T", "Media Gol 1T Recibido", "Media Gol 2T", "Media Gol 2T Recibido", "Media xG", "Media xG Recibido"]
-    stats_precision_1_percent = [
-        "Marca Gol", "Marca Gol 1T", "Marca Gol 2T", "Recibe Gol", "Recibe Gol 1T", "Recibe Gol 2T",
-        "Eficiencia Ofensiva", "Eficiencia Defensiva", "BTTS", "Gol HT", "Over 1.5 Goles", "Over 2.5 Goles", "Over 1.5 HT"
-    ]
-    stats_precision_1_promedio = ["Promedio Remates", "Promedio Tiros a Puerta"]
-
-    # Formateo de números con 2 decimales
-    styler = styler.format(precision=2, subset=pd.IndexSlice[stats_precision_2, :])
-    
-    # Formateo de porcentajes (con manejo de 0 para evitar errores)
-    def format_percent(x):
-        return f"{x:.1f}%" if isinstance(x, (int, float)) and not np.isnan(x) else "0.0%"
-        
-    styler = styler.format(format_percent, subset=pd.IndexSlice[stats_precision_1_percent, df_stats.columns[1]])
-    
-    # Formateo de promedios (con 1 decimal)
-    styler = styler.format(precision=1, subset=pd.IndexSlice[stats_precision_1_promedio, :])
+    # Formato de números con 1 decimal
+    styler = styler.format(precision=1)
     
     return styler
-
-def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
-    if df.empty:
-        st.warning(f"No hay suficientes datos para el gráfico de tendencia de {equipo_nombre}.")
-        return
-
-    # Usar los últimos 10 (o menos) y añadir un índice de partido para el eje X
-    df_plot = df.copy()
-    df_plot['Partido'] = range(1, len(df_plot) + 1)
-    
-    # Definir métricas de ataque y defensa para el equipo
-    if tipo_partido == "local":
-        metrics_favor = ['xg_favor', 'shots_favor', 'a_puerta_favor']
-        metrics_contra = ['xg_contra', 'goles_visitante', 'shots_contra', 'a_puerta_contra']
-    else: # visitante
-        metrics_favor = ['xg_favor', 'shots_favor', 'a_puerta_favor']
-        metrics_contra = ['xg_contra', 'goles_local', 'shots_contra', 'a_puerta_contra']
-    
-    # --- Gráfico OFENSIVO ---
-    
-    # Limpiar y preparar datos para el gráfico ofensivo
-    df_melt_favor = df_plot.loc[:, ['Partido'] + [col for col in metrics_favor if col in df_plot.columns]].melt(
-        id_vars=['Partido'], var_name='Métrica', value_name='Valor'
-    ).dropna(subset=['Valor'])
-    
-    # Calcular la mediana
-    mediana_favor = df_melt_favor.groupby('Métrica')['Valor'].median().reset_index()
-    mediana_favor['Mediana'] = mediana_favor['Valor']
-    
-    # Si no hay datos de ataque, no graficar
-    if df_melt_favor.empty:
-        chart_favor = alt.Chart(pd.DataFrame({'Partido': [0], 'Valor': [0]})).mark_text(text="Sin datos ofensivos para graficar.").encode(x='Partido', y='Valor')
-    else:
-        chart_favor = alt.Chart(df_melt_favor).encode(
-            x=alt.X('Partido', axis=None),
-            y=alt.Y('Valor', title="Métricas de Ataque (Favor)"),
-            color=alt.Color('Métrica', legend=alt.Legend(title="Métrica")),
-            tooltip=['Partido', 'Métrica', alt.Tooltip('Valor', format='.2f')]
-        ).properties(
-            title=f"Tendencia Ofensiva de {equipo_nombre} (Últimos {len(df_plot)} Partidos)"
-        )
-        
-        # Líneas de tendencia (Mediana)
-        line_mediana_favor = alt.Chart(mediana_favor).mark_rule(strokeDash=[5, 5]).encode(
-            y='Mediana',
-            color='Métrica',
-            size=alt.value(2),
-            tooltip=['Métrica', alt.Tooltip('Mediana', format='.2f')]
-        )
-        
-        # Puntos y Líneas de los datos
-        line_data_favor = chart_favor.mark_line().encode(opacity=alt.value(0.7))
-        points_data_favor = chart_favor.mark_circle().encode(opacity=alt.value(0.9))
-        
-        # Combinar
-        chart_favor = (line_data_favor + points_data_favor + line_mediana_favor).interactive()
-        
-    st.altair_chart(chart_favor, use_container_width=True)
-
-
-    # --- Gráfico DEFENSIVO ---
-    
-    # Se debe asegurar que las columnas existan, si no, se eliminan de la lista
-    metrics_contra_existentes = [col for col in metrics_contra if col in df_plot.columns]
-
-    df_melt_contra = df_plot.loc[:, ['Partido'] + metrics_contra_existentes].melt(
-        id_vars=['Partido'], var_name='Métrica', value_name='Valor'
-    ).dropna(subset=['Valor'])
-
-    # Calcular la mediana
-    mediana_contra = df_melt_contra.groupby('Métrica')['Valor'].median().reset_index()
-    mediana_contra['Mediana'] = mediana_contra['Valor']
-
-    # Si no hay datos de defensa, no graficar
-    if df_melt_contra.empty:
-        chart_contra = alt.Chart(pd.DataFrame({'Partido': [0], 'Valor': [0]})).mark_text(text="Sin datos defensivos para graficar.").encode(x='Partido', y='Valor')
-    else:
-        chart_contra = alt.Chart(df_melt_contra).encode(
-            x=alt.X('Partido', title='Número de Partido (Reciente a la derecha)'),
-            y=alt.Y('Valor', title="Métricas de Defensa (Contra)"),
-            color=alt.Color('Métrica', legend=alt.Legend(title="Métrica")),
-            tooltip=['Partido', 'Métrica', alt.Tooltip('Valor', format='.2f')]
-        ).properties(
-            title=f"Tendencia Defensiva de {equipo_nombre} (Últimos {len(df_plot)} Partidos)"
-        )
-
-        # Líneas de tendencia (Mediana)
-        line_mediana_contra = alt.Chart(mediana_contra).mark_rule(strokeDash=[5, 5]).encode(
-            y='Mediana',
-            color='Métrica',
-            size=alt.value(2),
-            tooltip=['Métrica', alt.Tooltip('Mediana', format='.2f')]
-        )
-
-        # Puntos y Líneas de los datos
-        line_data_contra = chart_contra.mark_line().encode(opacity=alt.value(0.7))
-        points_data_contra = chart_contra.mark_circle().encode(opacity=alt.value(0.9))
-        
-        # Combinar
-        chart_contra = (line_data_contra + points_data_contra + line_mediana_contra).interactive()
-
-    st.altair_chart(chart_contra, use_container_width=True)
 
 # === EQUIPOS DISPONIBLES ===
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
@@ -1235,7 +1219,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
     df_local_all = cargar_datos(equipo_local_nombre, "local", 10)
     df_visitante_all = cargar_datos(equipo_visitante_nombre, "visitante", 10)
 
-    # --- TABLA DE ESTADÍSTICAS ---
+    # Lógica para la tabla de la imagen
     stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
     stats_visitante = calcular_estadisticas_y_rachas(df_visitante_all, equipo_visitante_nombre, "visitante")
 
@@ -1246,22 +1230,17 @@ if equipo_local_nombre and equipo_visitante_nombre:
     col_local_stats, col_visitante_stats = st.columns(2)
 
     with col_local_stats:
-        st.subheader(f"🔵 {equipo_local_nombre} (Local)")
+        st.subheader("🔵 Equipo Local")
         if not df_stats_local.empty:
             st.table(resaltar_estadistica(df_stats_local))
-        else:
-             st.warning(f"No hay datos de estadísticas para {equipo_local_nombre}.")
 
     with col_visitante_stats:
-        st.subheader(f"🔴 {equipo_visitante_nombre} (Visitante)")
+        st.subheader("🔴 Equipo Visitante")
         if not df_stats_visitante.empty:
             st.table(resaltar_estadistica(df_stats_visitante))
-        else:
-            st.warning(f"No hay datos de estadísticas para {equipo_visitante_nombre}.")
 
-    # --- GRÁFICOS DE TENDENCIA ---
     st.markdown("---")
-    st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa) - Mediana")
+    st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
 
     col_local_chart, col_visitante_chart = st.columns(2)
 
