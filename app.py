@@ -817,10 +817,27 @@ def mostrar_resultados(resultados, df_local, df_visitante):
     for sugerencia in sugerencias:
         st.success(sugerencia)
 
+    def colorear_resultado(val):
+        color = ''
+        if val == 'W':
+            color = 'background-color: #c8e6c9'  # verde
+        elif val == 'D':
+            color = 'background-color: #fff9c4'  # amarillo
+        elif val == 'L':
+            color = 'background-color: #ffcdd2'  # rojo
+        return color
+
     st.subheader("Últimos 5 partidos local")
-    st.write(df_local.tail(5))
+    if 'resultado' in df_local.columns:
+        st.dataframe(df_local.tail(5).style.map(colorear_resultado, subset=['resultado']))
+    else:
+        st.table(df_local.tail(5))
+
     st.subheader("Últimos 5 partidos visitante")
-    st.write(df_visitante.tail(5))
+    if 'resultado' in df_visitante.columns:
+        st.dataframe(df_visitante.tail(5).style.map(colorear_resultado, subset=['resultado']))
+    else:
+        st.table(df_visitante.tail(5))
 
     st.subheader("Probabilidades de Goles")
     col1, col2, col3 = st.columns(3)
@@ -901,9 +918,11 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
     # Línea 1: xG a Favor
     fig_ataque.add_trace(
         go.Scatter(
-            x=x_data, y=df["xg_favor"], name='xG', mode='lines+markers',
+            x=x_data, y=df["xg_favor"], name='xG',
+            mode='lines+markers+text',
             line=dict(color='green', width=3),
-            text=df["xg_favor"].round(2), textposition="top center"
+            text=df["xg_favor"].round(2),
+            textposition="top center"
         ),
         secondary_y=True,
     )
@@ -911,9 +930,11 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
     # Línea 2: Tiros a Puerta (A Favor)
     fig_ataque.add_trace(
         go.Scatter(
-            x=x_data, y=df["a_puerta_favor"], name='Tiros a Puerta', mode='lines+markers',
+            x=x_data, y=df["a_puerta_favor"], name='Tiros a Puerta',
+            mode='lines+markers+text',
             line=dict(color='orange', width=3),
-            text=df["a_puerta_favor"].round(1), textposition="bottom center"
+            text=df["a_puerta_favor"].round(1),
+            textposition="bottom center"
         ),
         secondary_y=True,
     )
@@ -938,6 +959,7 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
     )
     fig_ataque.update_yaxes(title_text="Goles Anotados", secondary_y=False, showgrid=False)
     fig_ataque.update_yaxes(title_text="xG / Tiros a Puerta", secondary_y=True, showgrid=True)
+    fig_ataque.update_traces(textfont=dict(color="white", size=12, family="Arial", weight="bold"))
     st.plotly_chart(fig_ataque, use_container_width=True, config={"staticPlot": True})
 
 
@@ -959,9 +981,11 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
     # Línea 1: xG en Contra
     fig_defensa.add_trace(
         go.Scatter(
-            x=x_data, y=df["xg_contra"], name='xG en Contra', mode='lines+markers',
+            x=x_data, y=df["xg_contra"], name='xG en Contra',
+            mode='lines+markers+text',
             line=dict(color='purple', width=3),
-            text=df["xg_contra"].round(2), textposition="top center"
+            text=df["xg_contra"].round(2),
+            textposition="top center"
         ),
         secondary_y=True,
     )
@@ -969,14 +993,17 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
     # Línea 2: Tiros a Puerta *EN CONTRA* (Usando Shots Favor como PROXY/Control)
     fig_defensa.add_trace(
         go.Scatter(
-            x=x_data, y=df["shots_favor"], name='Remates Totales', mode='lines+markers',
+            x=x_data, y=df["a_puerta_contra"], name='Tiros a puerta en contra',
+            mode='lines+markers+text',
             line=dict(color='teal', width=3),
-            text=df["shots_favor"].round(1), textposition="bottom center"
+            text=df["a_puerta_contra"].round(1),
+            textposition="bottom center"
         ),
         secondary_y=True,
     )
     
     mediana_goles_contra = df[goles_contra_col].median()
+    
     fig_defensa.add_hline(
         y=mediana_goles_contra,
         line_dash="dot",
@@ -995,8 +1022,113 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         margin=dict(t=100)
     )
     fig_defensa.update_yaxes(title_text="Goles Recibidos", secondary_y=False, showgrid=False)
-    fig_defensa.update_yaxes(title_text="xG en Contra / Remates Totales", secondary_y=True, showgrid=True)
+    fig_defensa.update_yaxes(title_text="xG en Contra / Tiros a puerta en contra", secondary_y=True, showgrid=True)
+    fig_defensa.update_traces(textfont=dict(color="white", size=12, family="Arial", weight="bold"))
     st.plotly_chart(fig_defensa, use_container_width=True, config={"staticPlot": True})
+    
+        # === GRÁFICO DE GOLES POR MITAD (A FAVOR) ===
+    x_data = [f"{rival.upper()}" for rival in df[rival_col]]
+
+    fig_goles_mitad_favor = go.Figure()
+
+    fig_goles_mitad_favor.add_trace(go.Bar(
+        x=x_data,
+        y=df["1t_goles_favor"],
+        name="1T Goles a Favor",
+        text=df["1t_goles_favor"].round(1),
+        textposition="auto",
+        marker_color="royalblue",
+        offsetgroup=0
+    ))
+
+    fig_goles_mitad_favor.add_trace(go.Bar(
+        x=x_data,
+        y=df["2t_goles_favor"],
+        name="2T Goles a Favor",
+        text=df["2t_goles_favor"].round(1),
+        textposition="auto",
+        marker_color="orange",
+        offsetgroup=1
+    ))
+
+    # Líneas de mediana (una para cada mitad)
+    fig_goles_mitad_favor.add_hline(
+        y=df["1t_goles_favor"].median(),
+        line_dash="dot",
+        line_color="royalblue",
+        annotation_text=f"Mediana 1T: {df['1t_goles_favor'].median():.1f}",
+        annotation_position="top left"
+    )
+    fig_goles_mitad_favor.add_hline(
+        y=df["2t_goles_favor"].median(),
+        line_dash="dot",
+        line_color="orange",
+        annotation_text=f"Mediana 2T: {df['2t_goles_favor'].median():.1f}",
+        annotation_position="bottom left"
+    )
+
+    fig_goles_mitad_favor.update_layout(
+        title_text=f"{equipo_nombre} - Goles a Favor por Partido (1T y 2T)",
+        xaxis_title="Rivales Enfrentados",
+        yaxis_title="Goles a Favor",
+        barmode="group",
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=100)
+    )
+    
+    st.plotly_chart(fig_goles_mitad_favor, use_container_width=True, config={"staticPlot": True})
+
+
+    # === GRÁFICO DE GOLES POR MITAD (EN CONTRA) ===
+    fig_goles_mitad_contra = go.Figure()
+
+    fig_goles_mitad_contra.add_trace(go.Bar(
+        x=x_data,
+        y=df["1t_goles_contra"],
+        name="1T Goles Recibidos",
+        text=df["1t_goles_contra"].round(1),
+        textposition="auto",
+        marker_color="crimson",
+        offsetgroup=0
+    ))
+
+    fig_goles_mitad_contra.add_trace(go.Bar(
+        x=x_data,
+        y=df["2t_goles_contra"],
+        name="2T Goles Recibidos",
+        text=df["2t_goles_contra"].round(1),
+        textposition="auto",
+        marker_color="goldenrod",
+        offsetgroup=1
+    ))
+
+    # Líneas de mediana (una para cada mitad)
+    fig_goles_mitad_contra.add_hline(
+        y=df["1t_goles_contra"].median(),
+        line_dash="dot",
+        line_color="crimson",
+        annotation_text=f"Mediana 1T: {df['1t_goles_contra'].median():.1f}",
+        annotation_position="top left"
+    )
+    fig_goles_mitad_contra.add_hline(
+        y=df["2t_goles_contra"].median(),
+        line_dash="dot",
+        line_color="goldenrod",
+        annotation_text=f"Mediana 2T: {df['2t_goles_contra'].median():.1f}",
+        annotation_position="bottom left"
+    )
+
+    fig_goles_mitad_contra.update_layout(
+        title_text=f"{equipo_nombre} - Goles Recibidos por Partido (1T y 2T)",
+        xaxis_title="Rivales Enfrentados",
+        yaxis_title="Goles Recibidos",
+        barmode="group",
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=100)
+    )
+    st.plotly_chart(fig_goles_mitad_contra, use_container_width=True, config={"staticPlot": True})
 
 
 # === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
