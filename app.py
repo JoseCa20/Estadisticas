@@ -939,15 +939,29 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         secondary_y=True,
     )
     
-    mediana_goles = df[goles_favor_col].median()
-    
     fig_ataque.add_hline(
-        y=mediana_goles,
-        line_dash="dot",
-        line_color="gray",
-        annotation_text=f"Mediana: {mediana_goles:.1f}",
+        y=df[goles_favor_col].median(),
+        line_dash="dot", line_color="blue",
+        annotation_text=f"Mediana GF: {df[goles_favor_col].median():.2f}",
         annotation_position="top left"
     )
+
+    fig_ataque.add_hline(
+        y=df["xg_favor"].median(),
+        line_dash="dot", line_color="green",
+        annotation_text=f"Mediana xG: {df['xg_favor'].median():.2f}",
+        annotation_position="top right"
+    )
+
+    fig_ataque.add_hline(
+        y=df["a_puerta_favor"].median(),
+        line_dash="dot", line_color="orange",
+        annotation_text=f"Mediana ShotsOT: {df['a_puerta_favor'].median():.2f}",
+        annotation_position="bottom left"
+    )
+    
+    fig_ataque.update_layout(font=dict(color="black"))
+
 
     # Configuración del Eje y Título
     fig_ataque.update_layout(
@@ -955,7 +969,9 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         xaxis_title="Rivales Enfrentados (Partidos Recientes)",
         height=500,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=100)
+        margin=dict(t=100),
+        plot_bgcolor = "#e6e6e6",
+        paper_bgcolor = "#e6e6e6"
     )
     fig_ataque.update_yaxes(title_text="Goles Anotados", secondary_y=False, showgrid=False)
     fig_ataque.update_yaxes(title_text="xG / Tiros a Puerta", secondary_y=True, showgrid=True)
@@ -1002,16 +1018,28 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         secondary_y=True,
     )
     
-    mediana_goles_contra = df[goles_contra_col].median()
-    
     fig_defensa.add_hline(
-        y=mediana_goles_contra,
-        line_dash="dot",
-        line_color="gray",
-        annotation_text=f"Mediana: {mediana_goles_contra:.1f}",
+        y=df[goles_contra_col].median(),
+        line_dash="dot", line_color="red",
+        annotation_text=f"Mediana GC: {df[goles_contra_col].median():.2f}",
         annotation_position="top left"
     )
 
+    fig_defensa.add_hline(
+        y=df["xg_contra"].median(),
+        line_dash="dot", line_color="purple",
+        annotation_text=f"Mediana xG Contra: {df['xg_contra'].median():.2f}",
+        annotation_position="top right"
+    )
+
+    fig_defensa.add_hline(
+        y=df["a_puerta_contra"].median(),
+        line_dash="dot", line_color="teal",
+        annotation_text=f"Mediana ShotsOT C: {df['a_puerta_contra'].median():.2f}",
+        annotation_position="bottom left"
+    )
+    
+    fig_defensa.update_layout(font=dict(color="black"))
 
     # Configuración del Eje y Título
     fig_defensa.update_layout(
@@ -1019,7 +1047,9 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         xaxis_title="Rivales Enfrentados (Partidos Recientes)",
         height=500,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=100)
+        margin=dict(t=100),
+        plot_bgcolor = "#e6e6e6",
+        paper_bgcolor = "#e6e6e6"
     )
     fig_defensa.update_yaxes(title_text="Goles Recibidos", secondary_y=False, showgrid=False)
     fig_defensa.update_yaxes(title_text="xG en Contra / Tiros a puerta en contra", secondary_y=True, showgrid=True)
@@ -1074,7 +1104,9 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         barmode="group",
         height=500,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=100)
+        margin=dict(t=100),
+        plot_bgcolor = "#e6e6e6",
+        paper_bgcolor = "#e6e6e6"
     )
     
     st.plotly_chart(fig_goles_mitad_favor, use_container_width=True, config={"staticPlot": True})
@@ -1126,7 +1158,9 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         barmode="group",
         height=500,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=100)
+        margin=dict(t=100),
+        plot_bgcolor = "#e6e6e6",
+        paper_bgcolor = "#e6e6e6"
     )
     st.plotly_chart(fig_goles_mitad_contra, use_container_width=True, config={"staticPlot": True})
 
