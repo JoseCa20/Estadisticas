@@ -633,7 +633,7 @@ mapa_equipos = {
 }
 
 # === CARGAR DATOS DEL EQUIPO ===
-def cargar_datos(equipo_archivo, condicion="local", n=10):
+def cargar_datos(equipo_archivo, condicion="local", n=5):
     archivo = f"new-stats/{equipo_archivo}.xlsx"
     try:
         df = pd.read_excel(archivo)
