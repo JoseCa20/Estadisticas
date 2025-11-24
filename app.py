@@ -633,7 +633,7 @@ mapa_equipos = {
 }
 
 # === CARGAR DATOS DEL EQUIPO ===
-def cargar_datos(equipo_archivo, condicion="local", n=3):
+def cargar_datos(equipo_archivo, condicion="local", n=10):
     archivo = f"new-stats/{equipo_archivo}.xlsx"
     try:
         df = pd.read_excel(archivo)
@@ -1202,6 +1202,10 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
 def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     if df.empty:
         return None
+    
+    df10 = df.tail(10)
+    df5 = df.tail(5)
+    df3 = df.tail(3)
 
     df_calculo = df.copy()
 
@@ -1313,7 +1317,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Promedio Remates",
             "Promedio Tiros a Puerta"
         ],
-        f"{equipo_nombre} {tipo_partido.title()}": [
+
+        # ======= ÚLTIMOS 10 PARTIDOS (YA EXISTENTE) =======
+        f"{equipo_nombre} (10)": [
             media_gol,
             media_gol_recibido,
             media_gol_1t,
@@ -1332,7 +1338,8 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             promedio_remates,
             promedio_tiros_puerta
         ],
-        "Racha": [
+
+        "R10": [
             racha_media_gol,
             racha_media_gol_recibido,
             racha_media_gol_1t,
@@ -1341,8 +1348,8 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_media_gol_2t_recibido,
             racha_media_xg_favor,
             racha_media_xg_contra,
-            "N/A", # Eficiencia ofensiva no tiene racha
-            "N/A", # Eficiencia defensiva no tiene racha
+            "N/A",
+            "N/A",
             racha_btts,
             racha_gol_ht,
             racha_over_1_5_ht,
@@ -1351,6 +1358,88 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_prom_remates,
             racha_prom_tiros_puerta
         ],
+
+        # ======= ÚLTIMOS 5 PARTIDOS =======
+        f"{equipo_nombre} (5)": [
+            round(df5[goles_a_favor_col].mean(), 2),
+            round(df5[goles_en_contra_col].mean(), 2),
+            round(df5[goles_ht_favor_col].mean(), 2),
+            round(df5[goles_ht_contra_col].mean(), 2),
+            round(df5[goles_st_favor_col].mean(), 2),
+            round(df5[goles_st_contra_col].mean(), 2),
+            round(df5[xg_favor_col].mean(), 2),
+            round(df5[xg_contra_col].mean(), 2),
+            f"{round((df5[goles_a_favor_col].mean() / df5[xg_favor_col].mean()) * 100,1) if df5[xg_favor_col].mean()>0 else 0}%",
+            f"{round((df5[goles_en_contra_col].mean() / df5[xg_contra_col].mean()) * 100,1) if df5[xg_contra_col].mean()>0 else 0}%",
+            f"{( ((df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)).mean()*100 ):.1f}%",
+            f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0).mean()*100:.1f}%",
+            f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
+            f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5).mean()*100:.1f}%",
+            f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5).mean()*100:.1f}%",
+            round(df5[remates_favor_col].mean(),1),
+            round(df5[a_puerta_favor_col].mean(),1)
+        ],
+
+        "R5": [
+            calcular_racha(df5, goles_a_favor_col, df5[goles_a_favor_col].mean()),
+            calcular_racha(df5, goles_en_contra_col, df5[goles_en_contra_col].mean()),
+            calcular_racha(df5, goles_ht_favor_col, df5[goles_ht_favor_col].mean()),
+            calcular_racha(df5, goles_ht_contra_col, df5[goles_ht_contra_col].mean()),
+            calcular_racha(df5, goles_st_favor_col, df5[goles_st_favor_col].mean()),
+            calcular_racha(df5, goles_st_contra_col, df5[goles_st_contra_col].mean()),
+            calcular_racha(df5, xg_favor_col, df5[xg_favor_col].mean()),
+            calcular_racha(df5, xg_contra_col, df5[xg_contra_col].mean()),
+            "N/A",
+            "N/A",
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)),
+            calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0),
+            calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5),
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5),
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5),
+            calcular_racha(df5, remates_favor_col, df5[remates_favor_col].mean()),
+            calcular_racha(df5, a_puerta_favor_col, df5[a_puerta_favor_col].mean())
+        ],
+
+        # ======= ÚLTIMOS 3 PARTIDOS =======
+        f"{equipo_nombre} (3)": [
+            round(df3[goles_a_favor_col].mean(), 2),
+            round(df3[goles_en_contra_col].mean(), 2),
+            round(df3[goles_ht_favor_col].mean(), 2),
+            round(df3[goles_ht_contra_col].mean(), 2),
+            round(df3[goles_st_favor_col].mean(), 2),
+            round(df3[goles_st_contra_col].mean(), 2),
+            round(df3[xg_favor_col].mean(), 2),
+            round(df3[xg_contra_col].mean(), 2),
+            f"{round((df3[goles_a_favor_col].mean() / df3[xg_favor_col].mean()) * 100,1) if df3[xg_favor_col].mean()>0 else 0}%",
+            f"{round((df3[goles_en_contra_col].mean() / df3[xg_contra_col].mean()) * 100,1) if df3[xg_contra_col].mean()>0 else 0}%",
+            f"{(((df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)).mean()*100):.1f}%",
+            f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0).mean()*100:.1f}%",
+            f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
+            f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5).mean()*100:.1f}%",
+            f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5).mean()*100:.1f}%",
+            round(df3[remates_favor_col].mean(),1),
+            round(df3[a_puerta_favor_col].mean(),1)
+        ],
+
+        "R3": [
+            calcular_racha(df3, goles_a_favor_col, df3[goles_a_favor_col].mean()),
+            calcular_racha(df3, goles_en_contra_col, df3[goles_en_contra_col].mean()),
+            calcular_racha(df3, goles_ht_favor_col, df3[goles_ht_favor_col].mean()),
+            calcular_racha(df3, goles_ht_contra_col, df3[goles_ht_contra_col].mean()),
+            calcular_racha(df3, goles_st_favor_col, df3[goles_st_favor_col].mean()),
+            calcular_racha(df3, goles_st_contra_col, df3[goles_st_contra_col].mean()),
+            calcular_racha(df3, xg_favor_col, df3[xg_favor_col].mean()),
+            calcular_racha(df3, xg_contra_col, df3[xg_contra_col].mean()),
+            "N/A",
+            "N/A",
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)),
+            calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0),
+            calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5),
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5),
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5),
+            calcular_racha(df3, remates_favor_col, df3[remates_favor_col].mean()),
+            calcular_racha(df3, a_puerta_favor_col, df3[a_puerta_favor_col].mean())
+        ]
     }
 
 def resaltar_estadistica(df_stats):
@@ -1415,6 +1504,13 @@ with col2:
 
 # === CÁLCULOS Y VISUALIZACIÓN ===
 if equipo_local_nombre and equipo_visitante_nombre:
+    # --- 1. CONFIGURACIÓN DEL ESTADO DE SESIÓN ---
+    if 'partidos_rango' not in st.session_state:
+        st.session_state.partidos_rango = 10 # Valor inicial
+
+    # --- 2. CARGA DE DATOS ---
+    # Cargamos siempre los 10 para que los dataframes df_local_all y df_visitante_all
+    # tengan suficientes datos para todos los cálculos.
     df_local_all = cargar_datos(equipo_local_nombre, "local", 10)
     df_visitante_all = cargar_datos(equipo_visitante_nombre, "visitante", 10)
 
@@ -1425,19 +1521,48 @@ if equipo_local_nombre and equipo_visitante_nombre:
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
     df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
 
-    st.markdown("## 📊 Estadísticas Detalladas de los Últimos 10 Partidos")
+    st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")
+    
+    # --- 3. CREACIÓN DE BOTONES Y MANEJO DEL ESTADO ---
+    def set_rango(rango):
+        st.session_state.partidos_rango = rango
+        
+    col_btn_10, col_btn_5, col_btn_3, _ = st.columns([1, 1, 1, 9])
+    
+    with col_btn_10:
+        st.button("10 Partidos", on_click=set_rango, args=[10], 
+                  type="primary" if st.session_state.partidos_rango == 10 else "secondary")
+    with col_btn_5:
+        st.button("5 Partidos", on_click=set_rango, args=[5], 
+                  type="primary" if st.session_state.partidos_rango == 5 else "secondary")
+    with col_btn_3:
+        st.button("3 Partidos", on_click=set_rango, args=[3], 
+                  type="primary" if st.session_state.partidos_rango == 3 else "secondary")
+        
+    rango_actual = st.session_state.partidos_rango
+    
+    # Definición de las columnas a mostrar basado en el rango seleccionado
+    cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
+    
+    # --- 4. VISUALIZACIÓN DE LA TABLA DINÁMICA ---
     col_local_stats, col_visitante_stats = st.columns(2)
 
     with col_local_stats:
-        st.subheader("🔵 Equipo Local")
+        st.subheader(f"🔵 Equipo Local (Últimos {rango_actual})")
         if not df_stats_local.empty:
-            st.table(resaltar_estadistica(df_stats_local))
+            # Seleccionar solo las columnas correspondientes al rango actual para mostrar
+            df_local_filtered = df_stats_local[["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]].copy()
+            df_local_filtered.columns = ["Estadística", "Valor", "Racha"] # Renombrar para 'resaltar_estadistica'
+            st.table(resaltar_estadistica(df_local_filtered))
 
     with col_visitante_stats:
-        st.subheader("🔴 Equipo Visitante")
+        st.subheader(f"🔴 Equipo Visitante (Últimos {rango_actual})")
         if not df_stats_visitante.empty:
-            st.table(resaltar_estadistica(df_stats_visitante))
-
+            # Seleccionar solo las columnas correspondientes al rango actual para mostrar
+            df_visitante_filtered = df_stats_visitante[["Estadística", f"{equipo_visitante_nombre} ({rango_actual})", f"R{rango_actual}"]].copy()
+            df_visitante_filtered.columns = ["Estadística", "Valor", "Racha"] # Renombrar para 'resaltar_estadistica'
+            st.table(resaltar_estadistica(df_visitante_filtered))
+    
     st.markdown("---")
     st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
 
@@ -1445,17 +1570,20 @@ if equipo_local_nombre and equipo_visitante_nombre:
 
     with col_local_chart:
         st.subheader(f"🔵 {equipo_local_nombre} (Local) - Gráficos")
-        generar_grafico_tendencia(df_local_all, equipo_local_nombre, "local")
+        # Mostrar solo los últimos partidos relevantes para los gráficos de tendencia
+        df_local_trend = df_local_all.tail(rango_actual)
+        generar_grafico_tendencia(df_local_trend, equipo_local_nombre, "local")
 
     with col_visitante_chart:
         st.subheader(f"🔴 {equipo_visitante_nombre} (Visitante) - Gráficos")
-        generar_grafico_tendencia(df_visitante_all, equipo_visitante_nombre, "visitante")
-
+        # Mostrar solo los últimos partidos relevantes para los gráficos de tendencia
+        df_visitante_trend = df_visitante_all.tail(rango_actual)
+        generar_grafico_tendencia(df_visitante_trend, equipo_visitante_nombre, "visitante")
 
     st.markdown("---")
     st.markdown("## 🔮 Predicción del Partido")
 
-    # Lógica de predicción y sugerencias
+    # Lógica de predicción y sugerencias (Usa df_local_all y df_visitante_all para el cálculo)
     resultados = calcular_probabilidades_equipo(df_local_all, df_visitante_all)
     mostrar_resultados(resultados, df_local_all, df_visitante_all)
 
