@@ -1,3 +1,5 @@
+from typing import List, Union
+import numpy as np
 import streamlit as st
 import pandas as pd
 import os
@@ -659,30 +661,127 @@ def cargar_datos(equipo_archivo, condicion="local", n=10):
         st.error(f"❌ Error al cargar datos para {equipo_archivo}: {e}")
         return pd.DataFrame()
 
-# === CÁLCULO AJUSTADO POISSON ===
-def calcular_lambda(df, col_goles, col_xg, partidos_recientes = 5):
-    if df.empty:
-        return 0
+# === FUNCIÓN BASE: CÁLCULO LAMBDA PONDERADA (30/30/40) SOBRE GOLES REALES ===
+def calcular_lambda_ponderada_poisson(df: pd.DataFrame, col_goles: str) -> float:
+    """
+    Calcula la tasa de goles (lambda) usando el promedio ponderado: 
+    30% U-10, 30% U-5, 40% U-3.
+    """
+    goles_3: List[Union[int, float]] = df[col_goles].tail(3).dropna().tolist()
+    goles_5: List[Union[int, float]] = df[col_goles].tail(5).dropna().tolist()
+    goles_all: List[Union[int, float]] = df[col_goles].dropna().tolist()
+
+    # --- INICIO DE LA CORRECCIÓN DEL ERROR ---
+
+    # Calcular el promedio de los últimos 3 partidos
+    if goles_3:
+        # Se asegura que el array es de tipo float para el cálculo del promedio
+        avg_3 = np.array(goles_3, dtype=float).mean()
+    else:
+        # Manejo del caso donde no hay suficientes datos (previniendo el ValueError)
+        avg_3 = 0.0
+        print(f"Warning: No se encontraron datos para los últimos 3 partidos en '{col_goles}'. Usando promedio de 0.0 para este segmento.")
+
+    # Calcular el promedio de los últimos 6 partidos
+    if goles_5:
+        avg_5 = np.array(goles_5, dtype=float).mean()
+    else:
+        avg_5 = 0.0
+        print(f"Warning: No se encontraron datos para los últimos 5 partidos en '{col_goles}'. Usando promedio de 0.0 para este segmento.")
+
+    # Calcular el promedio de todos los partidos
+    if goles_all:
+        avg_all = np.array(goles_all, dtype=float).mean()
+    else:
+        # Si no hay NINGÚN dato, devuelve 0 para evitar fallos.
+        return 0.0
+
+    # --- FIN DE LA CORRECCIÓN DEL ERROR ---
+    
+    # 2. Asumiendo una ponderación estándar (ajusta estos pesos si son diferentes)
+    WEIGHT_3 = 0.40
+    WEIGHT_5 = 0.30
+    WEIGHT_ALL = 0.30
+    
+    lambda_ponderada = (avg_3 * WEIGHT_3) + (avg_5 * WEIGHT_5) + (avg_all * WEIGHT_ALL)
+    
+    return lambda_ponderada
+# === FUNCIÓN AJUSTADORA: CÁLCULO AJUSTADO XG/EFECTIVIDAD (Tu lógica anterior) ===
+def calcular_ajuste_xg(df, col_goles, col_xg, partidos_recientes = 5):
+    """
+    Calcula una métrica de ajuste basada en xG y efectividad reciente (peso 1.0 = neutro).
+    Este resultado se usará para modular la lambda ponderada de goles reales.
+    """
+    if df.empty or df[col_xg].sum() == 0:
+        return 1.0 # Factor de ajuste neutro
 
     xg_prom = df[col_xg].mean()
-    efectividad = (df[col_goles].sum() / df[col_xg].sum()) if df[col_xg].sum() > 0 else 1
+    
+    # Efectividad general (Goles / xG)
+    efectividad_general = (df[col_goles].sum() / df[col_xg].sum()) if df[col_xg].sum() > 0 else 1.0
 
-    df_recientes = df.sort_values(by="fecha", ascending=False).head(partidos_recientes)
+    # Forma reciente (Últimos 5 partidos)
+    df_recientes = df.head(partidos_recientes)
     xg_forma = df_recientes[col_xg].mean()
     goles_forma = df_recientes[col_goles].mean()
-    efectividad_forma = (df_recientes[col_goles].sum() / df_recientes[col_xg].sum()) if df_recientes[col_xg].sum() > 0 else 1
+    efectividad_forma = (df_recientes[col_goles].sum() / df_recientes[col_xg].sum()) if df_recientes[col_xg].sum() > 0 else 1.0
 
-    peso_xg = 0.4
-    peso_efectividad = 0.3
+    # Ponderación de la Métrica de Ajuste (Factor de Escala, no Lambda)
+    peso_xg_base = 0.4
+    peso_efectividad_general = 0.3
     peso_forma = 0.3
+    
+    # Normalizamos el xG de la forma y la efectividad para obtener un factor de ajuste.
+    # Usamos la media de xG de la temporada como base (promedio 1.0)
+    # y comparamos el xG de forma y efectividad de forma contra ese promedio.
+    
+    # Métrica de ajuste = Combinación de: 
+    # 1. El xG promedio
+    # 2. La efectividad general (cuanto mejor es la efectividad, mayor el factor)
+    # 3. El xG de la forma reciente (cuanto mejor es la forma, mayor el factor)
 
-    lambda_total = (
-        peso_xg * xg_prom +
-        peso_efectividad * xg_prom * efectividad +
-        peso_forma * xg_forma * efectividad_forma
+    # Para crear un FACTOR DE AJUSTE (escalador):
+    # La media de goles / xG de la liga podría ser 1.0. Aquí usamos el xG_prom como ancla.
+    
+    # 1. Componente xG: xg_prom (ya es un promedio, lo usamos como base)
+    # 2. Componente Efectividad: efectividad_general (si > 1, es positivo)
+    # 3. Componente Forma: xg_forma / xg_prom (si forma reciente es mejor que promedio, es positivo)
+
+    ajuste = (
+        (xg_prom * peso_xg_base) +
+        (xg_prom * efectividad_general * peso_efectividad_general) +
+        (xg_forma * efectividad_forma * peso_forma)
     )
 
-    return lambda_total
+    # Devolvemos el factor de ajuste comparado con la media de goles del equipo
+    # Si 'ajuste' es > media de goles, el factor > 1.0 (ajusta la lambda real hacia arriba)
+    # Si 'ajuste' es < media de goles, el factor < 1.0 (ajusta la lambda real hacia abajo)
+    goles_promedio = df[col_goles].mean() if df[col_goles].mean() > 0 else 1.0
+
+    # Factor de escalado
+    factor_ajuste = ajuste / goles_promedio
+    
+    return factor_ajuste
+
+
+# === FUNCIÓN DE COMBINACIÓN HÍBRIDA ===
+def calcular_lambda_hibrida(df, col_goles, col_xg):
+    """Combina la ponderación de Goles Reales (30/30/40) con el Factor de Ajuste xG/Efectividad."""
+    
+    # 1. Calcular Lambda Ponderada de Goles Reales (Sensibilidad a la forma)
+    lambda_real = calcular_lambda_ponderada_poisson(df, col_goles)
+    
+    # 2. Calcular Factor de Ajuste basado en xG/Efectividad (Estabilidad y Calidad)
+    factor_ajuste = calcular_ajuste_xg(df, col_goles, col_xg)
+    
+    # 3. Combinación (Ajuste el lambda real por el factor de calidad)
+    # Este enfoque hace que un equipo con buen xG o alta efectividad reciente 
+    # tenga un lambda ligeramente mayor que sus goles reales, y viceversa.
+    lambda_hibrida = lambda_real * factor_ajuste
+    
+    # Evitar valores negativos o excesivamente bajos
+    return max(0.1, lambda_hibrida) 
+
 
 def probabilidad_poisson(lmbda, min_goles=1):
     if lmbda <= 0:
@@ -711,13 +810,19 @@ def seleccionar_df(df):
 def calcular_estadisticas(df, tipo):
     if df.empty:
         return {}
+    
+    # Usamos los últimos 10 partidos para las estadísticas de remates/xg
+    df_recientes = df.head(10)
+    
     stats = {
-        "Prom. Goles": round(df["goles_local"].mean(), 2) if tipo == "local" else round(df["goles_visitante"].mean(), 2),
-        "Prom. xG": round(df["xg_favor"].mean(), 2),
-        "Prom. Remates": round(df["shots_favor"].mean(), 1),
-        "A puerta": round(df["a_puerta_favor"].mean(), 1),
+        # Aquí debes usar la columna de goles real (local o visitante) en función de 'tipo'
+        "Prom. Goles": round(df_recientes["goles_local"].mean(), 2) if tipo == "local" else round(df_recientes["goles_visitante"].mean(), 2),
+        "Prom. xG": round(df_recientes["xg_favor"].mean(), 2),
+        "Prom. Remates": round(df_recientes["shots_favor"].mean(), 1),
+        "A puerta": round(df_recientes["a_puerta_favor"].mean(), 1),
     }
     return stats
+
 
 def probabilidad_over_total(lambda_local, lambda_visitante, limite):
     lambda_total = lambda_local + lambda_visitante
@@ -753,23 +858,29 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
         "Visitante Gana": round(prob_visitante * 100, 2)
     }
 
-# === FUNCIÓN PRINCIPAL ===
+# === FUNCIÓN PRINCIPAL (Actualizada para usar la nueva lambda híbrida) ===
 def calcular_probabilidades_equipo(df_local, df_visitante):
     if df_local.empty or df_visitante.empty:
         return None
 
-    df_local_sel = seleccionar_df(df_local)
-    df_visitante_sel = seleccionar_df(df_visitante)
+    # NO USAMOS seleccionar_df. El DF ya está ordenado del más reciente al más antiguo.
+    
+    # 1. Calcular Lambdas HÍBRIDAS (Goles Ponderados 30/30/40 + Ajuste xG/Efectividad)
+    lambda_local = calcular_lambda_hibrida(df_local, "goles_local", "xg_favor")
+    lambda_visitante = calcular_lambda_hibrida(df_visitante, "goles_visitante", "xg_favor")
 
-    lambda_local = calcular_lambda(df_local_sel, "goles_local", "xg_favor")
-    lambda_visitante = calcular_lambda(df_visitante_sel, "goles_visitante", "xg_favor")
+    # Cálculos por Mitad (Usamos la misma lógica híbrida)
+    lambda_local_1t = calcular_lambda_hibrida(df_local, "1t_goles_favor", "xg_favor")
+    lambda_visitante_1t = calcular_lambda_hibrida(df_visitante, "1t_goles_favor", "xg_favor")
+    lambda_local_2t = calcular_lambda_hibrida(df_local, "2t_goles_favor", "xg_favor")
+    lambda_visitante_2t = calcular_lambda_hibrida(df_visitante, "2t_goles_favor", "xg_favor")
 
-    lambda_local_1t = calcular_lambda(df_local_sel, "1t_goles_favor", "xg_favor")
-    lambda_visitante_1t = calcular_lambda(df_visitante_sel, "1t_goles_favor", "xg_favor")
-    lambda_local_2t = calcular_lambda(df_local_sel, "2t_goles_favor", "xg_favor")
-    lambda_visitante_2t = calcular_lambda(df_visitante_sel, "2t_goles_favor", "xg_favor")
-
+    # Calculamos las probabilidades de resultado
     prob_resultados = calcular_probabilidades_resultado(lambda_local, lambda_visitante)
+
+    # 2. Datos de forma para el resumen (últimos 5 partidos)
+    df_local_5 = df_local.head(5)
+    df_visitante_5 = df_visitante.head(5)
 
     resultados = {
         "Prob. Local marca": probabilidad_poisson(lambda_local)*100,
@@ -784,13 +895,13 @@ def calcular_probabilidades_equipo(df_local, df_visitante):
         "Prob. Visitante 2T": probabilidad_poisson(lambda_visitante_2t)*100,
         "Prob. Gol 2T total": round(probabilidad_poisson(lambda_local_2t + lambda_visitante_2t), 3)*100,
 
-        "Prom. Remates Local": round(df_local_sel["shots_favor"].mean(), 1),
-        "Prom. Remates Visitante": round(df_visitante_sel["shots_favor"].mean(), 1),
-        "Total Remates": round((df_local_sel["shots_favor"].mean() + df_visitante_sel["shots_favor"].mean()), 1),
+        "Prom. Remates Local": round(df_local_5["shots_favor"].mean(), 1),
+        "Prom. Remates Visitante": round(df_visitante_5["shots_favor"].mean(), 1),
+        "Total Remates": round((df_local_5["shots_favor"].mean() + df_visitante_5["shots_favor"].mean()), 1),
 
-        "A puerta Local": round(df_local_sel["a_puerta_favor"].mean(), 1),
-        "A puerta Visitante": round(df_visitante_sel["a_puerta_favor"].mean(), 1),
-        "Total A puerta": round((df_local_sel["a_puerta_favor"].mean() + df_visitante_sel["a_puerta_favor"].mean()), 1),
+        "A puerta Local": round(df_local_5["a_puerta_favor"].mean(), 1),
+        "A puerta Visitante": round(df_visitante_5["a_puerta_favor"].mean(), 1),
+        "Total A puerta": round((df_local_5["a_puerta_favor"].mean() + df_visitante_5["a_puerta_favor"].mean()), 1),
 
         "Prob. Over 1.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 1.5),
         "Prob. Over 2.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 2.5),
