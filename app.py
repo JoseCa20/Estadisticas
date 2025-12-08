@@ -1330,7 +1330,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     xg_favor_col = "xg_favor"
     xg_contra_col = "xg_contra"
     remates_favor_col = "shots_favor"
+    remates_contra_col = "shots_contra"
     a_puerta_favor_col = "a_puerta_favor"
+    a_puerta_contra_col = "a_puerta_contra"
 
     # Goles y remates
     media_gol = round(df_calculo[goles_a_favor_col].mean(), 2)
@@ -1340,7 +1342,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     media_gol_2t = round(df_calculo[goles_st_favor_col].mean(), 2)
     media_gol_2t_recibido = round(df_calculo[goles_st_contra_col].mean(), 2)
     promedio_remates = round(df_calculo[remates_favor_col].mean(), 1)
+    promedio_remates_contra = round(df_calculo[remates_contra_col].mean(), 1)
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
+    promedio_tiros_puerta_contra = round(df_calculo[a_puerta_contra_col].mean(), 1)
     media_xg_favor = round(df_calculo[xg_favor_col].mean(), 2)
     media_xg_contra = round(df_calculo[xg_contra_col].mean(), 2)
 
@@ -1385,7 +1389,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     racha_media_xg_favor = calcular_racha(df_calculo, xg_favor_col, media_xg_favor)
     racha_media_xg_contra = calcular_racha(df_calculo, xg_contra_col, media_xg_contra)
     racha_prom_remates = calcular_racha(df_calculo, remates_favor_col, promedio_remates)
+    racha_prom_remates_contra = calcular_racha(df_calculo, remates_contra_col, promedio_remates_contra)
     racha_prom_tiros_puerta = calcular_racha(df_calculo, a_puerta_favor_col, promedio_tiros_puerta)
+    racha_prom_tiros_puerta_contra = calcular_racha(df_calculo, a_puerta_contra_col, promedio_tiros_puerta_contra)
 
     # BTTS y Over Goles
     btts_cond = (df_calculo[goles_a_favor_col] > 0) & (df_calculo[goles_en_contra_col] > 0)
@@ -1426,7 +1432,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Over 1.5 Goles",
             "Over 2.5 Goles",
             "Promedio Remates",
-            "Promedio Tiros a Puerta"
+            "Promedio Remates Contra",
+            "Promedio Tiros a Puerta",
+            "Promedio Tiros a Puerta Contra"
         ],
 
         # ======= ÚLTIMOS 10 PARTIDOS (YA EXISTENTE) =======
@@ -1447,7 +1455,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             f"{over_1_5_total:.1f}%",
             f"{over_2_5_goles:.1f}%",
             promedio_remates,
-            promedio_tiros_puerta
+            promedio_remates_contra,
+            promedio_tiros_puerta,
+            promedio_tiros_puerta_contra
         ],
 
         "R10": [
@@ -1467,7 +1477,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_over_1_5_total,
             racha_over_2_5,
             racha_prom_remates,
-            racha_prom_tiros_puerta
+            racha_prom_remates_contra,
+            racha_prom_tiros_puerta,
+            racha_prom_tiros_puerta_contra
         ],
 
         # ======= ÚLTIMOS 5 PARTIDOS =======
@@ -1488,7 +1500,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5).mean()*100:.1f}%",
             f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5).mean()*100:.1f}%",
             round(df5[remates_favor_col].mean(),1),
-            round(df5[a_puerta_favor_col].mean(),1)
+            round(df5[remates_contra_col].mean(),1),
+            round(df5[a_puerta_favor_col].mean(),1),
+            round(df5[a_puerta_contra_col].mean(),1)
         ],
 
         "R5": [
@@ -1508,7 +1522,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5),
             calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5),
             calcular_racha(df5, remates_favor_col, df5[remates_favor_col].mean()),
-            calcular_racha(df5, a_puerta_favor_col, df5[a_puerta_favor_col].mean())
+            calcular_racha(df5, remates_contra_col, df5[remates_contra_col].mean()),
+            calcular_racha(df5, a_puerta_favor_col, df5[a_puerta_favor_col].mean()),
+            calcular_racha(df5, a_puerta_contra_col, df5[a_puerta_contra_col].mean())
         ],
 
         # ======= ÚLTIMOS 3 PARTIDOS =======
@@ -1529,7 +1545,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5).mean()*100:.1f}%",
             f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5).mean()*100:.1f}%",
             round(df3[remates_favor_col].mean(),1),
-            round(df3[a_puerta_favor_col].mean(),1)
+            round(df3[remates_contra_col].mean(),1),
+            round(df3[a_puerta_favor_col].mean(),1),
+            round(df3[a_puerta_contra_col].mean(),1)
         ],
 
         "R3": [
@@ -1549,7 +1567,9 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5),
             calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5),
             calcular_racha(df3, remates_favor_col, df3[remates_favor_col].mean()),
-            calcular_racha(df3, a_puerta_favor_col, df3[a_puerta_favor_col].mean())
+            calcular_racha(df3, remates_contra_col, df3[remates_contra_col].mean()),
+            calcular_racha(df3, a_puerta_favor_col, df3[a_puerta_favor_col].mean()),
+            calcular_racha(df3, a_puerta_contra_col, df3[a_puerta_contra_col].mean())
         ]
     }
 
