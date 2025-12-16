@@ -671,14 +671,10 @@ def calcular_lambda_ponderada_poisson(df: pd.DataFrame, col_goles: str) -> float
     goles_5: List[Union[int, float]] = df[col_goles].tail(5).dropna().tolist()
     goles_all: List[Union[int, float]] = df[col_goles].dropna().tolist()
 
-    # --- INICIO DE LA CORRECCIÓN DEL ERROR ---
-
     # Calcular el promedio de los últimos 3 partidos
     if goles_3:
-        # Se asegura que el array es de tipo float para el cálculo del promedio
         avg_3 = np.array(goles_3, dtype=float).mean()
     else:
-        # Manejo del caso donde no hay suficientes datos (previniendo el ValueError)
         avg_3 = 0.0
         print(f"Warning: No se encontraron datos para los últimos 3 partidos en '{col_goles}'. Usando promedio de 0.0 para este segmento.")
 
@@ -693,69 +689,40 @@ def calcular_lambda_ponderada_poisson(df: pd.DataFrame, col_goles: str) -> float
     if goles_all:
         avg_all = np.array(goles_all, dtype=float).mean()
     else:
-        # Si no hay NINGÚN dato, devuelve 0 para evitar fallos.
         return 0.0
-
-    # --- FIN DE LA CORRECCIÓN DEL ERROR ---
     
-    # 2. Asumiendo una ponderación estándar (ajusta estos pesos si son diferentes)
-    WEIGHT_3 = 0.40
+    WEIGHT_3 = 0.20
     WEIGHT_5 = 0.30
-    WEIGHT_ALL = 0.30
+    WEIGHT_ALL = 0.50
     
     lambda_ponderada = (avg_3 * WEIGHT_3) + (avg_5 * WEIGHT_5) + (avg_all * WEIGHT_ALL)
     
     return lambda_ponderada
-# === FUNCIÓN AJUSTADORA: CÁLCULO AJUSTADO XG/EFECTIVIDAD (Tu lógica anterior) ===
-def calcular_ajuste_xg(df, col_goles, col_xg, partidos_recientes = 5):
-    """
-    Calcula una métrica de ajuste basada en xG y efectividad reciente (peso 1.0 = neutro).
-    Este resultado se usará para modular la lambda ponderada de goles reales.
-    """
-    if df.empty or df[col_xg].sum() == 0:
-        return 1.0 # Factor de ajuste neutro
 
+def calcular_ajuste_xg(df, col_goles, col_xg, partidos_recientes = 5):
+    
+    if df.empty or df[col_xg].sum() == 0:
+        return 1.0 
+    
     xg_prom = df[col_xg].mean()
     
-    # Efectividad general (Goles / xG)
     efectividad_general = (df[col_goles].sum() / df[col_xg].sum()) if df[col_xg].sum() > 0 else 1.0
 
-    # Forma reciente (Últimos 5 partidos)
     df_recientes = df.head(partidos_recientes)
     xg_forma = df_recientes[col_xg].mean()
     goles_forma = df_recientes[col_goles].mean()
     efectividad_forma = (df_recientes[col_goles].sum() / df_recientes[col_xg].sum()) if df_recientes[col_xg].sum() > 0 else 1.0
 
-    # Ponderación de la Métrica de Ajuste (Factor de Escala, no Lambda)
     peso_xg_base = 0.4
     peso_efectividad_general = 0.3
-    peso_forma = 0.3
-    
-    # Normalizamos el xG de la forma y la efectividad para obtener un factor de ajuste.
-    # Usamos la media de xG de la temporada como base (promedio 1.0)
-    # y comparamos el xG de forma y efectividad de forma contra ese promedio.
-    
-    # Métrica de ajuste = Combinación de: 
-    # 1. El xG promedio
-    # 2. La efectividad general (cuanto mejor es la efectividad, mayor el factor)
-    # 3. El xG de la forma reciente (cuanto mejor es la forma, mayor el factor)
-
-    # Para crear un FACTOR DE AJUSTE (escalador):
-    # La media de goles / xG de la liga podría ser 1.0. Aquí usamos el xG_prom como ancla.
-    
-    # 1. Componente xG: xg_prom (ya es un promedio, lo usamos como base)
-    # 2. Componente Efectividad: efectividad_general (si > 1, es positivo)
-    # 3. Componente Forma: xg_forma / xg_prom (si forma reciente es mejor que promedio, es positivo)
+    peso_forma = 0.3   
 
     ajuste = (
         (xg_prom * peso_xg_base) +
         (xg_prom * efectividad_general * peso_efectividad_general) +
         (xg_forma * efectividad_forma * peso_forma)
     )
-
-    # Devolvemos el factor de ajuste comparado con la media de goles del equipo
-    # Si 'ajuste' es > media de goles, el factor > 1.0 (ajusta la lambda real hacia arriba)
-    # Si 'ajuste' es < media de goles, el factor < 1.0 (ajusta la lambda real hacia abajo)
+    
     goles_promedio = df[col_goles].mean() if df[col_goles].mean() > 0 else 1.0
 
     # Factor de escalado
@@ -774,9 +741,7 @@ def calcular_lambda_hibrida(df, col_goles, col_xg):
     # 2. Calcular Factor de Ajuste basado en xG/Efectividad (Estabilidad y Calidad)
     factor_ajuste = calcular_ajuste_xg(df, col_goles, col_xg)
     
-    # 3. Combinación (Ajuste el lambda real por el factor de calidad)
-    # Este enfoque hace que un equipo con buen xG o alta efectividad reciente 
-    # tenga un lambda ligeramente mayor que sus goles reales, y viceversa.
+    # 3. Combinación (Ajuste el lambda real por el factor de calidad)   
     lambda_hibrida = lambda_real * factor_ajuste
     
     # Evitar valores negativos o excesivamente bajos
@@ -836,6 +801,81 @@ def calcular_probabilidad_over_equipo(lmbda, threshold):
     prob = 1 - poisson.cdf(threshold, lmbda)
     return round(prob * 100, 1)
 
+# === AUXILIARES PARA MÉTRICAS AVANZADAS ===
+def media_ultimos(df, col, n):
+    if col not in df.columns or df.empty:
+        return 0.0
+    return float(df[col].tail(n).mean())
+
+def blend_10_5_3(df, col):
+    m10 = media_ultimos(df, col, 10)
+    m5 = media_ultimos(df, col, 5)
+    m3 = media_ultimos(df, col, 3)
+    return 0.5 * m10 + 0.3 * m5 + 0.2 * m3
+
+def calcular_q_p(df, shots_col, sot_col, xg_col, n=5):
+    df5 = df.tail(n)
+    # Evitar divisiones por cero con un epsilon pequeño
+    shots = df5[shots_col].sum() if shots_col in df5.columns else 0.0
+    sot = df5[sot_col].sum() if sot_col in df5.columns else 0.0
+    xg = df5[xg_col].sum() if xg_col in df5.columns else 0.0
+    eps = 1e-6
+    q = xg / max(shots, eps)
+    p = sot / max(shots, eps)
+    return q, p
+
+def poisson_prob_over_under(lmbda, line, max_k):    
+    from math import floor
+    if lmbda <= 0:
+        return 0.0, 0.0
+    k_max = max_k
+    k_line = int(floor(line))
+    k_line = min(k_line, k_max)
+    pmfs = [poisson.pmf(k, lmbda) for k in range(0, k_max + 1)]
+    cdf_line = sum(pmfs[:k_line + 1])
+    p_under = cdf_line
+    p_over = 1 - cdf_line
+    return p_under * 100, p_over * 100
+
+def poisson_prob_total_over_under(lambda_local, lambda_visitante, line, max_k):
+    lmbda = lambda_local + lambda_visitante
+    return poisson_prob_over_under(lmbda, line, max_k)
+
+def poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8):
+    prob_local = prob_empate = prob_visitante = 0.0
+    for gl in range(0, max_goals + 1):
+        for gv in range(0, max_goals + 1):
+            p = poisson.pmf(gl, lambda_local) * poisson.pmf(gv, lambda_visitante)
+            if gl > gv:
+                prob_local += p
+            elif gl == gv:
+                prob_empate += p
+            else:
+                prob_visitante += p
+    pL = prob_local * 100
+    pE = prob_empate * 100
+    pV = prob_visitante * 100
+    p1x = (prob_local + prob_empate) * 100
+    p12 = (prob_local + prob_visitante) * 100
+    px2 = (prob_empate + prob_visitante) * 100
+    return {
+        "1": round(pL, 1),
+        "X": round(pE, 1),
+        "2": round(pV, 1),
+        "1X": round(p1x, 1),
+        "12": round(p12, 1),
+        "X2": round(px2, 1),
+    }
+
+def prob_btts(lambda_local, lambda_visitante, max_goals=8):
+    p_btts = 0.0
+    for gl in range(1, max_goals + 1):
+        for gv in range(1, max_goals + 1):
+            p = poisson.pmf(gl, lambda_local) * poisson.pmf(gv, lambda_visitante)
+            p_btts += p
+    return round(p_btts * 100, 1)
+
+
 def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=6):
     prob_local = prob_empate = prob_visitante = 0.0
 
@@ -857,6 +897,152 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
         "Empate": round(prob_empate * 100, 2),
         "Visitante Gana": round(prob_visitante * 100, 2)
     }
+    
+    # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
+
+def calcular_metricas_avanzadas(df_local, df_visitante):
+    if df_local.empty or df_visitante.empty:
+        return None
+
+    # --- BLENDS DE GOLES Y xG (LOCAL) ---
+    GF_local = blend_10_5_3(df_local, "goles_local")
+    xGF_local = blend_10_5_3(df_local, "xg_favor")
+    GC_local = blend_10_5_3(df_local, "goles_visitante")
+    xGC_local = blend_10_5_3(df_local, "xg_contra")
+
+    # --- BLENDS DE GOLES Y xG (VISITANTE) ---
+    GF_vis = blend_10_5_3(df_visitante, "goles_visitante")
+    xGF_vis = blend_10_5_3(df_visitante, "xg_favor")
+    GC_vis = blend_10_5_3(df_visitante, "goles_local")
+    xGC_vis = blend_10_5_3(df_visitante, "xg_contra")
+
+    # --- CALIDAD Y PRECISIÓN DE TIRO (SOLO ULT. 5 PARTIDOS) ---
+    # Ataque local
+    Q_shot_att_local, P_att_local = calcular_q_p(
+        df_local, "shots_favor", "a_puerta_favor", "xg_favor", n=5
+    )
+    # Defensa local
+    Q_shot_def_local, P_def_local = calcular_q_p(
+        df_local, "shots_contra", "a_puerta_contra", "xg_contra", n=5
+    )
+    # Ataque visitante
+    Q_shot_att_vis, P_att_vis = calcular_q_p(
+        df_visitante, "shots_favor", "a_puerta_favor", "xg_favor", n=5
+    )
+    # Defensa visitante
+    Q_shot_def_vis, P_def_vis = calcular_q_p(
+        df_visitante, "shots_contra", "a_puerta_contra", "xg_contra", n=5
+    )
+
+    # --- ATAQUE Y DEFENSA BASE ---
+    Ataque_base_local = 0.7 * xGF_local + 0.3 * GF_local
+    Defensa_base_local = 0.7 * xGC_local + 0.3 * GC_local
+
+    Ataque_base_vis = 0.7 * xGF_vis + 0.3 * GF_vis
+    Defensa_base_vis = 0.7 * xGC_vis + 0.3 * GC_vis
+
+    # --- FACTORES DE CAPADO ---
+    import math
+
+    F_att_local = math.sqrt(max(Q_shot_att_local, 0)) * math.sqrt(max(P_att_local, 0))
+    F_def_local = math.sqrt(max(Q_shot_def_local, 0)) * math.sqrt(max(P_def_local, 0))
+
+    F_att_vis = math.sqrt(max(Q_shot_att_vis, 0)) * math.sqrt(max(P_att_vis, 0))
+    F_def_vis = math.sqrt(max(Q_shot_def_vis, 0)) * math.sqrt(max(P_def_vis, 0))
+
+    def cap_factor(F):
+        if F > 1.1:
+            return 1.1
+        if F < 0.9:
+            return 0.9
+        return F
+
+    F_att_local_c = cap_factor(F_att_local)
+    F_def_local_c = cap_factor(F_def_local)
+    F_att_vis_c = cap_factor(F_att_vis)
+    F_def_vis_c = cap_factor(F_def_vis)
+
+    # --- ATAQUE Y DEFENSA FINALES ---
+    Ataque_final_local = Ataque_base_local * F_att_local_c
+    Defensa_final_local = Defensa_base_local * F_def_local_c
+
+    Ataque_final_vis = Ataque_base_vis * F_att_vis_c
+    Defensa_final_vis = Defensa_base_vis * F_def_vis_c
+
+    # --- LAMBDAS CRUZADOS (GOLES) ---
+    lambda_local_new = (Ataque_final_local + Defensa_final_vis) / 2.0
+    lambda_vis_new = (Ataque_final_vis + Defensa_final_local) / 2.0
+
+    # Evitar negativos
+    lambda_local_new = max(lambda_local_new, 0.01)
+    lambda_vis_new = max(lambda_vis_new, 0.01)
+
+    # --- PRECISIÓN DEL PARTIDO ---
+    P_match_local = (P_att_local + P_def_local) / 2.0
+    P_match_vis = (P_att_vis + P_def_vis) / 2.0
+
+    # --- REMATES ATAQUE (ULT. 5 PARTIDOS) ---
+    df_local_5 = df_local.tail(5)
+    df_vis_5 = df_visitante.tail(5)
+
+    shots_fav_local = df_local_5["shots_favor"].mean() if "shots_favor" in df_local_5.columns else 0.0
+    shots_contra_local = df_local_5["shots_contra"].mean() if "shots_contra" in df_local_5.columns else 0.0
+
+    shots_fav_vis = df_vis_5["shots_favor"].mean() if "shots_favor" in df_vis_5.columns else 0.0
+    shots_contra_vis = df_vis_5["shots_contra"].mean() if "shots_contra" in df_vis_5.columns else 0.0
+
+    Remates_att_local = (shots_fav_local + shots_contra_vis) / 2.0
+    Remates_att_vis = (shots_fav_vis + shots_contra_local) / 2.0
+
+    # --- TIROS A PUERTA ESPERADOS ---
+    SoT_local = Remates_att_local * P_match_local
+    SoT_vis = Remates_att_vis * P_match_vis
+
+    # Evitar negativos
+    Remates_att_local = max(Remates_att_local, 0.01)
+    Remates_att_vis = max(Remates_att_vis, 0.01)
+    SoT_local = max(SoT_local, 0.01)
+    SoT_vis = max(SoT_vis, 0.01)
+
+    return {
+        "GF_local_blend": GF_local,
+        "xGF_local_blend": xGF_local,
+        "GC_local_blend": GC_local,
+        "xGC_local_blend": xGC_local,
+        "GF_vis_blend": GF_vis,
+        "xGF_vis_blend": xGF_vis,
+        "GC_vis_blend": GC_vis,
+        "xGC_vis_blend": xGC_vis,
+        "Q_shot_att_local": Q_shot_att_local,
+        "P_att_local": P_att_local,
+        "Q_shot_def_local": Q_shot_def_local,
+        "P_def_local": P_def_local,
+        "Q_shot_att_vis": Q_shot_att_vis,
+        "P_att_vis": P_att_vis,
+        "Q_shot_def_vis": Q_shot_def_vis,
+        "P_def_vis": P_def_vis,
+        "Ataque_base_local": Ataque_base_local,
+        "Defensa_base_local": Defensa_base_local,
+        "Ataque_base_vis": Ataque_base_vis,
+        "Defensa_base_vis": Defensa_base_vis,
+        "F_att_local": F_att_local_c,
+        "F_def_local": F_def_local_c,
+        "F_att_vis": F_att_vis_c,
+        "F_def_vis": F_def_vis_c,
+        "Ataque_final_local": Ataque_final_local,
+        "Defensa_final_local": Defensa_final_local,
+        "Ataque_final_vis": Ataque_final_vis,
+        "Defensa_final_vis": Defensa_final_vis,
+        "lambda_local_new": lambda_local_new,
+        "lambda_vis_new": lambda_vis_new,
+        "P_match_local": P_match_local,
+        "P_match_vis": P_match_vis,
+        "Remates_att_local": Remates_att_local,
+        "Remates_att_vis": Remates_att_vis,
+        "SoT_local": SoT_local,
+        "SoT_vis": SoT_vis,
+    }
+
 
 # === FUNCIÓN PRINCIPAL (Actualizada para usar la nueva lambda híbrida) ===
 def calcular_probabilidades_equipo(df_local, df_visitante):
@@ -1025,6 +1211,182 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("Prom. Remates Visitante", resultados.get("Prom. Remates Visitante", "N/A"))
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
+
+# === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
+def mostrar_tablas_avanzadas(metricas):
+    if metricas is None:
+        return
+
+    lambda_L = metricas["lambda_local_new"]
+    lambda_V = metricas["lambda_vis_new"]
+
+    col1, col2, col3 = st.columns(3)
+
+    # Tabla 1: Resultado y dobles (umbral 60%)
+    with col1:
+        st.subheader("Resultado y Dobles")
+        res = poisson_prob_1x2_y_dobles(lambda_L, lambda_V, max_goals=8)
+        df_res = pd.DataFrame(
+            [
+                ["Gana Local", res["1"]],
+                ["Empate", res["X"]],
+                ["Gana Visitante", res["2"]],
+                ["Local o Empate (1X)", res["1X"]],
+                ["Visitante o Empate (X2)", res["X2"]],
+                ["Gana Cualquiera (No empate)", res["12"]],
+            ],
+            columns=["Métrica", "Probabilidad %"],
+        )
+        st.table(formatear_y_resaltar(df_res, "Probabilidad %", umbral=60))
+
+    # Tabla 2: Overs/Unders de goles totales
+    with col2:
+        st.subheader("Goles en el Partido")
+        lineas_goles = [0.5, 1.5, 2.5, 3.5]
+        rows_totales = []
+        for L in lineas_goles:
+            u, o = poisson_prob_total_over_under(lambda_L, lambda_V, L, max_k=8)
+            rows_totales.append([f"+{L} goles", o, f"-{L} goles", u])
+        df_tot = pd.DataFrame(
+            rows_totales, columns=["Over", "Prob. Over %", "Under", "Prob. Under %"]
+        )
+        st.table(formatear_y_resaltar(df_tot, "Prob. Over %", umbral=70, col_extra = "Prob. Under %"))
+
+    # Tabla 3: Goles por equipo y BTTS
+    with col3:
+        st.subheader("Goles por Equipo y BTTS")
+        lineas_equipo = [0.5, 1.5]
+        rows_eq = []
+        for L in lineas_equipo:
+            _, oL = poisson_prob_over_under(lambda_L, L, max_k=8)
+            _, oV = poisson_prob_over_under(lambda_V, L, max_k=8)
+            rows_eq.append(
+                [f"Local marca +{L}", oL, metricas["P_match_local"]]
+            )
+            rows_eq.append(
+                [f"Visitante marca +{L}", oV, metricas["P_match_vis"]]
+            )
+        btts = prob_btts(lambda_L, lambda_V, max_goals=8)
+        rows_eq.append([
+            "BTTS",
+            btts,
+            (metricas["P_match_local"] + metricas["P_match_vis"]) / 2.0
+        ])
+        df_eq = pd.DataFrame(
+            rows_eq, columns=["Métrica", "Probabilidad %", "Precisión"]
+        )
+        st.table(formatear_y_resaltar(df_eq, "Probabilidad %", umbral=70, col_extra="Precisión"))
+
+    # === Tabla 4 y 5 en la misma fila ===
+    col4, col5 = st.columns(2)
+    
+    with col4:
+        st.subheader("Remates Totales en el Partido")
+        lambda_shots_total = metricas["Remates_att_local"] + metricas["Remates_att_vis"]
+        lineas_shots_total = [18.5, 19.5, 20.5, 21.5, 22.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5]
+        rows_shots_tot = []
+        for L in lineas_shots_total:
+            u, o = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
+            rows_shots_tot.append([L, u, o])
+        df_shots_tot = pd.DataFrame(
+            rows_shots_tot, columns=["Línea", "Under %", "Over %"]
+        )
+        st.table(formatear_y_resaltar(df_shots_tot, "Over %", umbral=70, col_extra = "Under %"))
+
+    # Tabla 5: Remates por equipo
+    with col5:
+        st.subheader("Remates por Equipo")
+        lineas_shots_eq = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5, 20.5]
+        rows_shots_eq = []
+        for L in lineas_shots_eq:
+            _, oL = poisson_prob_over_under(metricas["Remates_att_local"], L, max_k=25)
+            _, oV = poisson_prob_over_under(metricas["Remates_att_vis"], L, max_k=25)
+            rows_shots_eq.append([f"+{L} Remates", oL, oV])
+
+        df_shots_eq = pd.DataFrame(
+            rows_shots_eq,
+            columns=["Remates", "Local %", "Visitante %"]
+        )
+        st.table(formatear_y_resaltar(df_shots_eq, "Local %", umbral=70, col_extra= "Visitante %"))
+
+    # === Tabla 6 y 7 en la misma fila ===
+    col6, col7 = st.columns(2)
+    
+    # Tabla 6: Tiros a puerta totales
+    with col6:
+        st.subheader("Tiros a Puerta Totales")
+        lambda_sot_total = metricas["SoT_local"] + metricas["SoT_vis"]
+        lineas_sot_total = [5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5]
+        rows_sot_tot = []
+        for L in lineas_sot_total:
+            u, o = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
+            rows_sot_tot.append([L, u, o])
+        df_sot_tot = pd.DataFrame(
+            rows_sot_tot, columns=["Línea", "Under %", "Over %"]
+        )
+        st.table(formatear_y_resaltar(df_sot_tot, "Over %", umbral=70, col_extra="Under %"))
+
+    # === Tabla 7: Tiros a puerta por equipo (1 por fila o en dos columnas) ===
+    with col7:
+        st.subheader("Tiros a Puerta por Equipo")
+        lineas_sot_eq = [2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
+        rows_sot_eq = []
+        for L in lineas_sot_eq:
+            _, oL = poisson_prob_over_under(metricas["SoT_local"], L, max_k=10)
+            _, oV = poisson_prob_over_under(metricas["SoT_vis"], L, max_k=10)
+            rows_sot_eq.append([f"+{L} Tiros a puerta", oL, oV])
+
+        df_sot_eq = pd.DataFrame(
+            rows_sot_eq,
+            columns=["Tiros a puerta", "Local %", "Visitante %"]
+        )
+        st.table(formatear_y_resaltar(df_sot_eq, "Local %", umbral=70, col_extra= "Visitante %"))
+
+    
+def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
+    df_fmt = df.reset_index(drop=True).copy()
+
+    # Redondear columnas de línea (goles / remates / tiros) a 1 decimal si son numéricas
+    if "Línea" in df_fmt.columns and pd.api.types.is_numeric_dtype(df_fmt["Línea"]):
+        df_fmt["Línea"] = df_fmt["Línea"].astype(float).round(1)
+
+    # Redondear columnas de probabilidad (ya están en %)
+    if col_prob in df_fmt.columns:
+        df_fmt[col_prob] = df_fmt[col_prob].astype(float).round(1)
+    if col_extra and col_extra in df_fmt.columns:
+        df_fmt[col_extra] = df_fmt[col_extra].astype(float).round(1)
+
+    def _color_col(col):
+        styles = []
+        for val in col:
+            try:
+                v = float(val)
+            except Exception:
+                v = 0.0
+            styles.append("background-color: #bbdefb" if v >= umbral else "")
+        return styles
+
+    fmt_dict = {}
+
+    # Formato para Línea (1 decimal, sin %)
+    if "Línea" in df_fmt.columns:
+        fmt_dict["Línea"] = "{:.1f}"
+
+    # Formato para columnas de probabilidad (1 decimal con %)
+    if col_prob in df_fmt.columns:
+        fmt_dict[col_prob] = "{:.1f}%"
+    if col_extra and col_extra in df_fmt.columns:
+        fmt_dict[col_extra] = "{:.1f}%"
+
+    styler = df_fmt.style.hide(axis="index")
+    if col_prob in df_fmt.columns:
+        styler = styler.apply(_color_col, subset=[col_prob], axis=0)
+    if col_extra and col_extra in df_fmt.columns:
+        styler = styler.apply(_color_col, subset=[col_extra], axis=0)
+    if fmt_dict:
+        styler = styler.format(fmt_dict)
+
+    return styler
 
 # === GRÁFICOS DE TENDENCIA (NUEVA FUNCIÓN) ===
 def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
@@ -1346,11 +1708,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     promedio_tiros_puerta = round(df_calculo[a_puerta_favor_col].mean(), 1)
     promedio_tiros_puerta_contra = round(df_calculo[a_puerta_contra_col].mean(), 1)
     media_xg_favor = round(df_calculo[xg_favor_col].mean(), 2)
-    media_xg_contra = round(df_calculo[xg_contra_col].mean(), 2)
-
-    # Eficiencias
-    eficiencia_ofensiva = round((media_gol / media_xg_favor) * 100, 1) if media_xg_favor > 0 else 0
-    eficiencia_defensiva = round((media_gol_recibido / media_xg_contra) * 100, 1) if media_xg_contra > 0 else 0
+    media_xg_contra = round(df_calculo[xg_contra_col].mean(), 2)    
 
     # Funciones para calcular rachas genéricas
     def calcular_racha(df, col, promedio):
@@ -1424,8 +1782,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T Recibido",
             "Media xG",
             "Media xG Recibido",
-            "Eficiencia Ofensiva",
-            "Eficiencia Defensiva",
             "BTTS",
             "Gol HT",
             "Over 1.5 HT",
@@ -1447,8 +1803,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol_2t_recibido,
             media_xg_favor,
             media_xg_contra,
-            f"{eficiencia_ofensiva:.1f}%",
-            f"{eficiencia_defensiva:.1f}%",
             f"{btts:.1f}%",
             f"{gol_ht:.1f}%",
             f"{over_1_5_ht:.1f}%",
@@ -1468,9 +1822,7 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_media_gol_2t,
             racha_media_gol_2t_recibido,
             racha_media_xg_favor,
-            racha_media_xg_contra,
-            "N/A",
-            "N/A",
+            racha_media_xg_contra,            
             racha_btts,
             racha_gol_ht,
             racha_over_1_5_ht,
@@ -1492,8 +1844,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             round(df5[goles_st_contra_col].mean(), 2),
             round(df5[xg_favor_col].mean(), 2),
             round(df5[xg_contra_col].mean(), 2),
-            f"{round((df5[goles_a_favor_col].mean() / df5[xg_favor_col].mean()) * 100,1) if df5[xg_favor_col].mean()>0 else 0}%",
-            f"{round((df5[goles_en_contra_col].mean() / df5[xg_contra_col].mean()) * 100,1) if df5[xg_contra_col].mean()>0 else 0}%",
             f"{( ((df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)).mean()*100 ):.1f}%",
             f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0).mean()*100:.1f}%",
             f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
@@ -1514,8 +1864,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha(df5, goles_st_contra_col, df5[goles_st_contra_col].mean()),
             calcular_racha(df5, xg_favor_col, df5[xg_favor_col].mean()),
             calcular_racha(df5, xg_contra_col, df5[xg_contra_col].mean()),
-            "N/A",
-            "N/A",
             calcular_racha_booleana(df5, (df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)),
             calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0),
             calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5),
@@ -1537,8 +1885,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             round(df3[goles_st_contra_col].mean(), 2),
             round(df3[xg_favor_col].mean(), 2),
             round(df3[xg_contra_col].mean(), 2),
-            f"{round((df3[goles_a_favor_col].mean() / df3[xg_favor_col].mean()) * 100,1) if df3[xg_favor_col].mean()>0 else 0}%",
-            f"{round((df3[goles_en_contra_col].mean() / df3[xg_contra_col].mean()) * 100,1) if df3[xg_contra_col].mean()>0 else 0}%",
             f"{(((df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)).mean()*100):.1f}%",
             f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0).mean()*100:.1f}%",
             f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
@@ -1559,8 +1905,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha(df3, goles_st_contra_col, df3[goles_st_contra_col].mean()),
             calcular_racha(df3, xg_favor_col, df3[xg_favor_col].mean()),
             calcular_racha(df3, xg_contra_col, df3[xg_contra_col].mean()),
-            "N/A",
-            "N/A",
             calcular_racha_booleana(df3, (df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)),
             calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0),
             calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5),
@@ -1693,6 +2037,9 @@ if equipo_local_nombre and equipo_visitante_nombre:
             df_visitante_filtered = df_stats_visitante[["Estadística", f"{equipo_visitante_nombre} ({rango_actual})", f"R{rango_actual}"]].copy()
             df_visitante_filtered.columns = ["Estadística", "Valor", "Racha"] # Renombrar para 'resaltar_estadistica'
             st.table(resaltar_estadistica(df_visitante_filtered))
+            
+    metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all)
+    mostrar_tablas_avanzadas(metricas_avanzadas)
     
     st.markdown("---")
     st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
