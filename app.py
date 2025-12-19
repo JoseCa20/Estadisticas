@@ -1042,6 +1042,40 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
 
     SoT_local = max(SoT_local, 0.01)
     SoT_vis   = max(SoT_vis, 0.01)
+    
+    # --- GOLES EN LA PRIMERA MITAD (usando datos reales del 1T + xG total) ---
+    # Local: goles 1T a favor y en contra
+    GF1_local = blend_10_5_3(df_local, "1t_goles_favor")
+    GC1_local = blend_10_5_3(df_local, "1t_goles_contra")
+
+    # Visitante: goles 1T a favor y en contra
+    GF1_vis   = blend_10_5_3(df_visitante, "1t_goles_favor")
+    GC1_vis   = blend_10_5_3(df_visitante, "1t_goles_contra")
+
+    # xG total del partido (que ya calculaste antes)
+    xGF_local = blend_10_5_3(df_local, "xg_favor")
+    xGC_local = blend_10_5_3(df_local, "xg_contra")
+    xGF_vis   = blend_10_5_3(df_visitante, "xg_favor")
+    xGC_vis   = blend_10_5_3(df_visitante, "xg_contra")
+
+    # Mezcla: xG total + goles 1T
+    Ataque1_base_local  = 0.7 * xGF_local + 0.3 * GF1_local
+    Defensa1_base_local = 0.7 * xGC_local + 0.3 * GC1_local
+
+    Ataque1_base_vis    = 0.7 * xGF_vis  + 0.3 * GF1_vis
+    Defensa1_base_vis   = 0.7 * xGC_vis  + 0.3 * GC1_vis
+
+    # Aplicar los mismos factores de tiro que en 90'
+    Ataque1_final_local  = Ataque1_base_local  * F_att_local_c
+    Defensa1_final_local = Defensa1_base_local * F_def_local_c
+    Ataque1_final_vis    = Ataque1_base_vis    * F_att_vis_c
+    Defensa1_final_vis   = Defensa1_base_vis   * F_def_vis_c
+
+    lambda1_local = (Ataque1_final_local + Defensa1_final_vis) / 2.0
+    lambda1_vis   = (Ataque1_final_vis   + Defensa1_final_local) / 2.0
+
+    lambda1_local = max(lambda1_local, 0.01)
+    lambda1_vis   = max(lambda1_vis, 0.01)
 
     return {
         "GF_local_blend": GF_local,
@@ -1080,6 +1114,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
         "Remates_att_vis": Remates_att_vis,
         "SoT_local": SoT_local,
         "SoT_vis": SoT_vis,
+        "lambda1_local": lambda1_local,
+        "lambda1_vis": lambda1_vis,
     }
 
 
@@ -1258,8 +1294,11 @@ def mostrar_tablas_avanzadas(metricas):
 
     lambda_L = metricas["lambda_local_new"]
     lambda_V = metricas["lambda_vis_new"]
+    
+    lambda1_L = metricas["lambda1_local"]
+    lambda1_V = metricas["lambda1_vis"]
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col8 = st.columns(4)
 
     # Tabla 1: Resultado y dobles (umbral 60%)
     with col1:
@@ -1315,6 +1354,29 @@ def mostrar_tablas_avanzadas(metricas):
             rows_eq, columns=["Métrica", "Probabilidad %", "Precisión"]
         )
         st.table(formatear_y_resaltar(df_eq, "Probabilidad %", umbral=70, col_extra="Precisión"))
+        
+    with col8:
+        st.subheader("Goles en el 1T")
+        lineas_1T = [0.5, 1.5]
+        rows_1T = []
+        for L in lineas_1T:
+            u, o = poisson_prob_total_over_under(lambda1_L, lambda1_V, L, max_k=5)
+            rows_1T.append([f"+{L} goles 1T", o, f"-{L} goles 1T", u])
+
+        # Probabilidades por equipo 1T (Over/Under 0.5)
+        uL05, oL05 = poisson_prob_over_under(lambda1_L, 0.5, max_k=5)
+        uV05, oV05 = poisson_prob_over_under(lambda1_V, 0.5, max_k=5)
+
+        rows_1T.extend([
+            ["Local marca 0.5+ 1T", oL05, "Local Under 0.5 1T", uL05],
+            ["Visita marca 0.5+ 1T", oV05, "Visita Under 0.5 1T", uV05],
+        ])
+
+        df_1T = pd.DataFrame(
+            rows_1T,
+            columns=["Métrica / Over 1T", "Prob. Over %", "Métrica / Under 1T", "Prob. Under %"]
+        )
+        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", umbral=70, col_extra="Prob. Under %"))  
 
     # === Tabla 4 y 5 en la misma fila ===
     col4, col5 = st.columns(2)
