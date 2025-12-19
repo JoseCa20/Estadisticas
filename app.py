@@ -841,6 +841,12 @@ def poisson_prob_total_over_under(lambda_local, lambda_visitante, line, max_k):
     lmbda = lambda_local + lambda_visitante
     return poisson_prob_over_under(lmbda, line, max_k)
 
+def media_U(df, col, n):
+    df_n = df.tail(n)
+    if col in df_n.columns and not df_n.empty:
+        return df_n[col].mean()
+    return 0.0
+
 def poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8):
     prob_local = prob_empate = prob_visitante = 0.0
     for gl in range(0, max_goals + 1):
@@ -898,8 +904,7 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
         "Visitante Gana": round(prob_visitante * 100, 2)
     }
     
-    # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
-
+# === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
 def calcular_metricas_avanzadas(df_local, df_visitante):
     if df_local.empty or df_visitante.empty:
         return None
@@ -981,28 +986,62 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
     P_match_local = (P_att_local + P_def_local) / 2.0
     P_match_vis = (P_att_vis + P_def_vis) / 2.0
 
-    # --- REMATES ATAQUE (ULT. 5 PARTIDOS) ---
-    df_local_5 = df_local.tail(5)
-    df_vis_5 = df_visitante.tail(5)
+    # === REMATES: BLEND U10/U5/U3 Y CRUCE ATAQUE/DEFENSA ===
+    w10, w5, w3 = 0.50, 0.30, 0.20
 
-    shots_fav_local = df_local_5["shots_favor"].mean() if "shots_favor" in df_local_5.columns else 0.0
-    shots_contra_local = df_local_5["shots_contra"].mean() if "shots_contra" in df_local_5.columns else 0.0
+    # Local
+    shots_fav_local_U10    = media_U(df_local, "shots_favor", 10)
+    shots_fav_local_U5     = media_U(df_local, "shots_favor", 5)
+    shots_fav_local_U3     = media_U(df_local, "shots_favor", 3)
 
-    shots_fav_vis = df_vis_5["shots_favor"].mean() if "shots_favor" in df_vis_5.columns else 0.0
-    shots_contra_vis = df_vis_5["shots_contra"].mean() if "shots_contra" in df_vis_5.columns else 0.0
+    shots_contra_local_U10 = media_U(df_local, "shots_contra", 10)
+    shots_contra_local_U5  = media_U(df_local, "shots_contra", 5)
+    shots_contra_local_U3  = media_U(df_local, "shots_contra", 3)
 
-    Remates_att_local = (shots_fav_local + shots_contra_vis) / 2.0
-    Remates_att_vis = (shots_fav_vis + shots_contra_local) / 2.0
+    shots_fav_local_blend    = (
+        w10 * shots_fav_local_U10 +
+        w5  * shots_fav_local_U5 +
+        w3  * shots_fav_local_U3
+    )
+    shots_contra_local_blend = (
+        w10 * shots_contra_local_U10 +
+        w5  * shots_contra_local_U5 +
+        w3  * shots_contra_local_U3
+    )
 
-    # --- TIROS A PUERTA ESPERADOS ---
-    SoT_local = Remates_att_local * P_match_local
-    SoT_vis = Remates_att_vis * P_match_vis
+    # Visitante
+    shots_fav_vis_U10    = media_U(df_visitante, "shots_favor", 10)
+    shots_fav_vis_U5     = media_U(df_visitante, "shots_favor", 5)
+    shots_fav_vis_U3     = media_U(df_visitante, "shots_favor", 3)
 
-    # Evitar negativos
+    shots_contra_vis_U10 = media_U(df_visitante, "shots_contra", 10)
+    shots_contra_vis_U5  = media_U(df_visitante, "shots_contra", 5)
+    shots_contra_vis_U3  = media_U(df_visitante, "shots_contra", 3)
+
+    shots_fav_vis_blend    = (
+        w10 * shots_fav_vis_U10 +
+        w5  * shots_fav_vis_U5 +
+        w3  * shots_fav_vis_U3
+    )
+    shots_contra_vis_blend = (
+        w10 * shots_contra_vis_U10 +
+        w5  * shots_contra_vis_U5 +
+        w3  * shots_contra_vis_U3
+    )
+
+    # Lambdas de remates por ataque cruzado con defensa rival
+    Remates_att_local = (shots_fav_local_blend + shots_contra_vis_blend) / 2.0
+    Remates_att_vis   = (shots_fav_vis_blend   + shots_contra_local_blend) / 2.0
+
     Remates_att_local = max(Remates_att_local, 0.01)
-    Remates_att_vis = max(Remates_att_vis, 0.01)
+    Remates_att_vis   = max(Remates_att_vis, 0.01)
+
+    # --- TIROS A PUERTA ESPERADOS (SoT) ---
+    SoT_local = Remates_att_local * P_match_local
+    SoT_vis   = Remates_att_vis   * P_match_vis
+
     SoT_local = max(SoT_local, 0.01)
-    SoT_vis = max(SoT_vis, 0.01)
+    SoT_vis   = max(SoT_vis, 0.01)
 
     return {
         "GF_local_blend": GF_local,
