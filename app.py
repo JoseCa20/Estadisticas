@@ -1457,6 +1457,7 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
     if col_extra and col_extra in df_fmt.columns:
         df_fmt[col_extra] = df_fmt[col_extra].astype(float).round(1)
 
+    # Colorear sólo las celdas de probabilidad que superan el umbral
     def _color_col(col):
         styles = []
         for val in col:
@@ -1466,6 +1467,12 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
                 v = 0.0
             styles.append("background-color: #bbdefb" if v >= umbral else "")
         return styles
+
+    # Primera columna (Métrica / Remates / Tiros a puerta / Línea texto)
+    metric_col = df_fmt.columns[0]
+
+    def _style_metric_col(col):
+        return ["background-color: #fff3e0" for _ in col]
 
     fmt_dict = {}
 
@@ -1480,10 +1487,24 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
         fmt_dict[col_extra] = "{:.1f}%"
 
     styler = df_fmt.style.hide(axis="index")
+
+    # Estilo para encabezados
+    styler = styler.set_table_styles([
+        {
+            "selector": "th.col_heading",
+            "props": "background-color: #e0e0e0; font-weight: bold;"
+        }
+    ])
+
+    # Colorear primera columna (métrica / línea)
+    styler = styler.apply(_style_metric_col, subset=[metric_col], axis=0)
+
+    # Colorear columnas de probabilidad según umbral
     if col_prob in df_fmt.columns:
         styler = styler.apply(_color_col, subset=[col_prob], axis=0)
     if col_extra and col_extra in df_fmt.columns:
         styler = styler.apply(_color_col, subset=[col_extra], axis=0)
+
     if fmt_dict:
         styler = styler.format(fmt_dict)
 
