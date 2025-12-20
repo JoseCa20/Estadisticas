@@ -1442,22 +1442,32 @@ def mostrar_tablas_avanzadas(metricas):
             columns=["Tiros a puerta", "Local %", "Visitante %"]
         )
         st.table(formatear_y_resaltar(df_sot_eq, "Local %", umbral=70, col_extra= "Visitante %"))
+        
+def prob_a_texto_con_cuota(p):
+    try:
+        p_float = float(p)
+    except Exception:
+        return p
+    if p_float <= 0:
+        return "0.0% (0.00)"
+    cuota = 100 / p_float
+    return f"{p_float:.1f}%   ({cuota:.2f})"
 
     
 def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
     df_fmt = df.reset_index(drop=True).copy()
 
-    # Redondear columnas de línea (goles / remates / tiros) a 1 decimal si son numéricas
+    # Línea numérica
     if "Línea" in df_fmt.columns and pd.api.types.is_numeric_dtype(df_fmt["Línea"]):
         df_fmt["Línea"] = df_fmt["Línea"].astype(float).round(1)
 
-    # Redondear columnas de probabilidad (ya están en %)
-    if col_prob in df_fmt.columns:
-        df_fmt[col_prob] = df_fmt[col_prob].astype(float).round(1)
-    if col_extra and col_extra in df_fmt.columns:
-        df_fmt[col_extra] = df_fmt[col_extra].astype(float).round(1)
+    # Guardar columnas numéricas para colorear
+    cols_prob_numericas = []
+    for col in [col_prob, col_extra]:
+        if col and col in df_fmt.columns:
+            df_fmt[col] = df_fmt[col].astype(float).round(1)
+            cols_prob_numericas.append(col)
 
-    # Colorear sólo las celdas de probabilidad que superan el umbral
     def _color_col(col):
         styles = []
         for val in col:
@@ -1468,27 +1478,13 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
             styles.append("background-color: #bbdefb" if v >= umbral else "")
         return styles
 
-    # Primera columna (Métrica / Remates / Tiros a puerta / Línea texto)
     metric_col = df_fmt.columns[0]
 
     def _style_metric_col(col):
         return ["background-color: #fff3e0" for _ in col]
 
-    fmt_dict = {}
-
-    # Formato para Línea (1 decimal, sin %)
-    if "Línea" in df_fmt.columns:
-        fmt_dict["Línea"] = "{:.1f}"
-
-    # Formato para columnas de probabilidad (1 decimal con %)
-    if col_prob in df_fmt.columns:
-        fmt_dict[col_prob] = "{:.1f}%"
-    if col_extra and col_extra in df_fmt.columns:
-        fmt_dict[col_extra] = "{:.1f}%"
-
     styler = df_fmt.style.hide(axis="index")
 
-    # Estilo para encabezados
     styler = styler.set_table_styles([
         {
             "selector": "th.col_heading",
@@ -1496,19 +1492,24 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
         }
     ])
 
-    # Colorear primera columna (métrica / línea)
     styler = styler.apply(_style_metric_col, subset=[metric_col], axis=0)
 
-    # Colorear columnas de probabilidad según umbral
-    if col_prob in df_fmt.columns:
-        styler = styler.apply(_color_col, subset=[col_prob], axis=0)
-    if col_extra and col_extra in df_fmt.columns:
-        styler = styler.apply(_color_col, subset=[col_extra], axis=0)
+    for col in cols_prob_numericas:
+        styler = styler.apply(_color_col, subset=[col], axis=0)
+
+    # Formatos: Línea sólo número; probabilidades con % + cuota
+    fmt_dict = {}
+    if "Línea" in df_fmt.columns:
+        fmt_dict["Línea"] = "{:.1f}"
+
+    for col in cols_prob_numericas:
+        fmt_dict[col] = prob_a_texto_con_cuota
 
     if fmt_dict:
         styler = styler.format(fmt_dict)
 
     return styler
+
 
 # === GRÁFICOS DE TENDENCIA (NUEVA FUNCIÓN) ===
 def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
