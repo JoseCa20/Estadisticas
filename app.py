@@ -660,6 +660,67 @@ def cargar_datos(equipo_archivo, condicion="local", n=10):
     except Exception as e:
         st.error(f"❌ Error al cargar datos para {equipo_archivo}: {e}")
         return pd.DataFrame()
+    
+RUTA_STATS = "new-stats"              
+RUTA_EQUIPOS_LIGAS = "enlaces_equipos.xlsx"  
+
+@st.cache_data
+def media_goles_1t_liga(pais: str, n_partidos_max: int | None = None):    
+    try:
+        df_equipos = pd.read_excel(RUTA_EQUIPOS_LIGAS)
+    except Exception as e:
+        st.error(f"No se pudo leer {RUTA_EQUIPOS_LIGAS}: {e}")
+        return None
+
+    df_equipos.columns = df_equipos.columns.str.strip().str.lower()
+    if "equipo" not in df_equipos.columns or "pais" not in df_equipos.columns:
+        st.error("La tabla equipos_ligas debe tener columnas 'equipo' y 'pais'.")
+        return None
+
+    df_pais = df_equipos[df_equipos["pais"].str.lower() == pais.lower()]
+    if df_pais.empty:
+        st.warning(f"No hay equipos registrados para el país '{pais}'.")
+        return None
+
+    goles_1t = 0.0
+    partidos = 0
+
+    for equipo_archivo in df_pais["equipo"]:
+        ruta = os.path.join(RUTA_STATS, f"{equipo_archivo}.xlsx")
+        if not os.path.exists(ruta):
+            continue
+
+        df = pd.read_excel(ruta)
+        df = normalizar_columnas(df)
+
+        for col in ["1t_goles_favor", "1t_goles_contra"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if n_partidos_max is not None:
+            df = df.tail(n_partidos_max)
+
+        g1 = df["1t_goles_favor"].fillna(0) + df["1t_goles_contra"].fillna(0)
+        goles_1t += g1.sum()
+        partidos += len(df)
+
+    if partidos == 0:
+        return None
+
+    media_1t = goles_1t / partidos   
+    return media_1t
+
+@st.cache_data
+def pais_de_equipo(equipo_archivo: str) -> str | None:
+    try:
+        df_equipos = pd.read_excel(RUTA_EQUIPOS_LIGAS)
+    except Exception:
+        return None
+    df_equipos.columns = df_equipos.columns.str.strip().str.lower()
+    fila = df_equipos[df_equipos["equipo"] == equipo_archivo]
+    if fila.empty:
+        return None
+    return str(fila["pais"].iloc[0])
 
 # === FUNCIÓN BASE: CÁLCULO LAMBDA PONDERADA (30/30/40) SOBRE GOLES REALES ===
 def calcular_lambda_ponderada_poisson(df: pd.DataFrame, col_goles: str) -> float:
@@ -1043,39 +1104,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
     SoT_local = max(SoT_local, 0.01)
     SoT_vis   = max(SoT_vis, 0.01)
     
-    # --- GOLES EN LA PRIMERA MITAD (usando datos reales del 1T + xG total) ---
-    # Local: goles 1T a favor y en contra
-    GF1_local = blend_10_5_3(df_local, "1t_goles_favor")
-    GC1_local = blend_10_5_3(df_local, "1t_goles_contra")
-
-    # Visitante: goles 1T a favor y en contra
-    GF1_vis   = blend_10_5_3(df_visitante, "1t_goles_favor")
-    GC1_vis   = blend_10_5_3(df_visitante, "1t_goles_contra")
-
-    # xG total del partido (que ya calculaste antes)
-    xGF_local = blend_10_5_3(df_local, "xg_favor")
-    xGC_local = blend_10_5_3(df_local, "xg_contra")
-    xGF_vis   = blend_10_5_3(df_visitante, "xg_favor")
-    xGC_vis   = blend_10_5_3(df_visitante, "xg_contra")
-
-    # Mezcla: xG total + goles 1T
-    Ataque1_base_local  = 0.7 * xGF_local + 0.3 * GF1_local
-    Defensa1_base_local = 0.7 * xGC_local + 0.3 * GC1_local
-
-    Ataque1_base_vis    = 0.7 * xGF_vis  + 0.3 * GF1_vis
-    Defensa1_base_vis   = 0.7 * xGC_vis  + 0.3 * GC1_vis
-
-    # Aplicar los mismos factores de tiro que en 90'
-    Ataque1_final_local  = Ataque1_base_local  * F_att_local_c
-    Defensa1_final_local = Defensa1_base_local * F_def_local_c
-    Ataque1_final_vis    = Ataque1_base_vis    * F_att_vis_c
-    Defensa1_final_vis   = Defensa1_base_vis   * F_def_vis_c
-
-    lambda1_local = (Ataque1_final_local + Defensa1_final_vis) / 2.0
-    lambda1_vis   = (Ataque1_final_vis   + Defensa1_final_local) / 2.0
-
-    lambda1_local = max(lambda1_local, 0.01)
-    lambda1_vis   = max(lambda1_vis, 0.01)
+    
 
     return {
         "GF_local_blend": GF_local,
@@ -1113,65 +1142,107 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
         "Remates_att_local": Remates_att_local,
         "Remates_att_vis": Remates_att_vis,
         "SoT_local": SoT_local,
-        "SoT_vis": SoT_vis,
-        "lambda1_local": lambda1_local,
-        "lambda1_vis": lambda1_vis,
+        "SoT_vis": SoT_vis
     }
 
+def prob_over05_total_1t(lmbda_L1, lmbda_V1):
+    lmbda = lmbda_L1 + lmbda_V1
+    return (1 - poisson.pmf(0, lmbda)) * 100
+
+def prob_over15_total_1t(lmbda_L1, lmbda_V1):
+    lmbda = lmbda_L1 + lmbda_V1
+    p0 = poisson.pmf(0, lmbda)
+    p1 = poisson.pmf(1, lmbda)
+    return (1 - p0 - p1) * 100
+
+def prob_over05_equipo_1t(lmbda_1t):
+    return (1 - poisson.pmf(0, lmbda_1t)) * 100
 
 # === FUNCIÓN PRINCIPAL (Actualizada para usar la nueva lambda híbrida) ===
-def calcular_probabilidades_equipo(df_local, df_visitante):
+def calcular_probabilidades_equipo(df_local, df_visitante,
+                                   equipo_local_archivo=None,
+                                   equipo_visitante_archivo=None):
     if df_local.empty or df_visitante.empty:
         return None
 
-    # NO USAMOS seleccionar_df. El DF ya está ordenado del más reciente al más antiguo.
-    
-    # 1. Calcular Lambdas HÍBRIDAS (Goles Ponderados 30/30/40 + Ajuste xG/Efectividad)
+    # 1) Lambdas totales 90'
     lambda_local = calcular_lambda_hibrida(df_local, "goles_local", "xg_favor")
     lambda_visitante = calcular_lambda_hibrida(df_visitante, "goles_visitante", "xg_favor")
 
-    # Cálculos por Mitad (Usamos la misma lógica híbrida)
-    lambda_local_1t = calcular_lambda_hibrida(df_local, "1t_goles_favor", "xg_favor")
-    lambda_visitante_1t = calcular_lambda_hibrida(df_visitante, "1t_goles_favor", "xg_favor")
-    lambda_local_2t = calcular_lambda_hibrida(df_local, "2t_goles_favor", "xg_favor")
-    lambda_visitante_2t = calcular_lambda_hibrida(df_visitante, "2t_goles_favor", "xg_favor")
+    # 2) Factor de liga para repartir 1T / 2T
+    pais_local = pais_de_equipo(equipo_local_archivo) if equipo_local_archivo else None
+    media_1t_liga = media_goles_1t_liga(pais_local, n_partidos_max=38) if pais_local else None
 
-    # Calculamos las probabilidades de resultado
+    if media_1t_liga is not None:
+        media_total_liga = 2.6  # luego puedes calibrar por país
+        f_1t = media_1t_liga / media_total_liga
+        f_1t = max(0.35, min(f_1t, 0.50))
+    else:
+        f_1t = 0.44
+    f_2t = 1 - f_1t
+
+    # 3) Lambdas por mitad (derivados del total)
+    lambda_local_1t = lambda_local * f_1t
+    lambda_visitante_1t = lambda_visitante * f_1t
+    lambda_local_2t = lambda_local * f_2t
+    lambda_visitante_2t = lambda_visitante * f_2t
+
+    # 4) Probabilidades de resultado 90'
     prob_resultados = calcular_probabilidades_resultado(lambda_local, lambda_visitante)
 
-    # 2. Datos de forma para el resumen (últimos 5 partidos)
+    # 5) Datos de forma últimos 5
     df_local_5 = df_local.head(5)
     df_visitante_5 = df_visitante.head(5)
 
     resultados = {
-        "Prob. Local marca": probabilidad_poisson(lambda_local)*100,
-        "Prob. Visitante marca": probabilidad_poisson(lambda_visitante)*100,
-        "Prob. BTTS": round(probabilidad_poisson(lambda_local) * probabilidad_poisson(lambda_visitante), 3)*100,
+        # Goles 90'
+        "Prob. Local marca": probabilidad_poisson(lambda_local) * 100,
+        "Prob. Visitante marca": probabilidad_poisson(lambda_visitante) * 100,
+        "Prob. BTTS": round(
+            probabilidad_poisson(lambda_local) * probabilidad_poisson(lambda_visitante), 3
+        ) * 100,
 
-        "Prob. Local 1T": probabilidad_poisson(lambda_local_1t)*100,
-        "Prob. Visitante 1T": probabilidad_poisson(lambda_visitante_1t)*100,
-        "Prob. Gol 1T total": round(probabilidad_poisson(lambda_local_1t + lambda_visitante_1t), 3)*100,
+        # 1T total
+        "Prob. Gol 1T total": prob_over05_total_1t(lambda_local_1t, lambda_visitante_1t),
+        "Prob. Gol 1T over 1.5": prob_over15_total_1t(lambda_local_1t, lambda_visitante_1t),
 
-        "Prob. Local 2T": probabilidad_poisson(lambda_local_2t)*100,
-        "Prob. Visitante 2T": probabilidad_poisson(lambda_visitante_2t)*100,
-        "Prob. Gol 2T total": round(probabilidad_poisson(lambda_local_2t + lambda_visitante_2t), 3)*100,
+        # 1T por equipo (over 0.5)
+        "Prob. Local 1T": prob_over05_equipo_1t(lambda_local_1t),
+        "Prob. Visitante 1T": prob_over05_equipo_1t(lambda_visitante_1t),
 
+        # 2T (simétrico si quieres usarlo)
+        "Prob. Gol 2T total": prob_over05_total_1t(lambda_local_2t, lambda_visitante_2t),
+        "Prob. Local 2T": prob_over05_equipo_1t(lambda_local_2t),
+        "Prob. Visitante 2T": prob_over05_equipo_1t(lambda_visitante_2t),
+
+        # Remates / SoT (igual que antes)
         "Prom. Remates Local": round(df_local_5["shots_favor"].mean(), 1),
         "Prom. Remates Visitante": round(df_visitante_5["shots_favor"].mean(), 1),
-        "Total Remates": round((df_local_5["shots_favor"].mean() + df_visitante_5["shots_favor"].mean()), 1),
-
+        "Total Remates": round(
+            df_local_5["shots_favor"].mean() + df_visitante_5["shots_favor"].mean(), 1
+        ),
         "A puerta Local": round(df_local_5["a_puerta_favor"].mean(), 1),
         "A puerta Visitante": round(df_visitante_5["a_puerta_favor"].mean(), 1),
-        "Total A puerta": round((df_local_5["a_puerta_favor"].mean() + df_visitante_5["a_puerta_favor"].mean()), 1),
+        "Total A puerta": round(
+            df_local_5["a_puerta_favor"].mean() + df_visitante_5["a_puerta_favor"].mean(), 1
+        ),
 
+        # Overs totales 90'
         "Prob. Over 1.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 1.5),
         "Prob. Over 2.5 Goles": probabilidad_over_total(lambda_local, lambda_visitante, 2.5),
 
+        # Overs por equipo 90'
         "Prob. Local Over 1.5 Goles": calcular_probabilidad_over_equipo(lambda_local, 1.5),
         "Prob. Visitante Over 1.5 Goles": calcular_probabilidad_over_equipo(lambda_visitante, 1.5),
 
-        **prob_resultados
+        # Probabilidades de resultado 1X2
+        **prob_resultados,
+
+        # Guardar lambdas 1T para las tablas avanzadas
+        "lambda_local_1t": lambda_local_1t,
+        "lambda_visitante_1t": lambda_visitante_1t,
     }
+
     return resultados
 
 def generar_sugerencias(resultados):
@@ -1288,16 +1359,13 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
-def mostrar_tablas_avanzadas(metricas):
+def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
     if metricas is None:
         return
 
     lambda_L = metricas["lambda_local_new"]
     lambda_V = metricas["lambda_vis_new"]
     
-    lambda1_L = metricas["lambda1_local"]
-    lambda1_V = metricas["lambda1_vis"]
-
     col1, col2, col3, col8 = st.columns(4)
 
     # Tabla 1: Resultado y dobles (umbral 60%)
@@ -1363,7 +1431,6 @@ def mostrar_tablas_avanzadas(metricas):
             u, o = poisson_prob_total_over_under(lambda1_L, lambda1_V, L, max_k=5)
             rows_1T.append([f"+{L} goles 1T", o, f"-{L} goles 1T", u])
 
-        # Probabilidades por equipo 1T (Over/Under 0.5)
         uL05, oL05 = poisson_prob_over_under(lambda1_L, 0.5, max_k=5)
         uV05, oV05 = poisson_prob_over_under(lambda1_V, 0.5, max_k=5)
 
@@ -1376,7 +1443,7 @@ def mostrar_tablas_avanzadas(metricas):
             rows_1T,
             columns=["Métrica / Over 1T", "Prob. Over %", "Métrica / Under 1T", "Prob. Under %"]
         )
-        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", umbral=70, col_extra="Prob. Under %"))  
+        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", umbral=70, col_extra="Prob. Under %")) 
 
     # === Tabla 4 y 5 en la misma fila ===
     col4, col5 = st.columns(2)
@@ -2110,7 +2177,11 @@ if equipo_local_nombre and equipo_visitante_nombre:
     # Cargamos siempre los 10 para que los dataframes df_local_all y df_visitante_all
     # tengan suficientes datos para todos los cálculos.
     df_local_all = cargar_datos(equipo_local_nombre, "local", 10)
-    df_visitante_all = cargar_datos(equipo_visitante_nombre, "visitante", 10)
+    df_visitante_all = cargar_datos(equipo_visitante_nombre, "visitante", 10)       
+
+    # Lógica para la tabla de la imagen
+    stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
+    stats_visitante = calcular_estadisticas_y_rachas(df_visitante_all, equipo_visitante_nombre, "visitante")
 
     # Lógica para la tabla de la imagen
     stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
@@ -2162,7 +2233,17 @@ if equipo_local_nombre and equipo_visitante_nombre:
             st.table(resaltar_estadistica(df_visitante_filtered))
             
     metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all)
-    mostrar_tablas_avanzadas(metricas_avanzadas)
+    resultados = calcular_probabilidades_equipo(
+        df_local_all, df_visitante_all,
+        equipo_local_archivo=equipo_local_nombre,
+        equipo_visitante_archivo=equipo_visitante_nombre,
+    )
+
+    lambda1_L = resultados["lambda_local_1t"]
+    lambda1_V = resultados["lambda_visitante_1t"]
+
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)
+    mostrar_resultados(resultados, df_local_all, df_visitante_all)
     
     st.markdown("---")
     st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
