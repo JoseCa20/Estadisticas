@@ -1395,7 +1395,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
             ],
             columns=["Métrica", "Probabilidad %"],
         )
-        st.table(formatear_y_resaltar(df_res, "Probabilidad %", umbral=60))
+        st.table(formatear_y_resaltar(df_res, "Probabilidad %", (80, 60)))
 
     # Tabla 2: Overs/Unders de goles totales
     with col2:
@@ -1408,32 +1408,57 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         df_tot = pd.DataFrame(
             rows_totales, columns=["Over", "Prob. Over %", "Under", "Prob. Under %"]
         )
-        st.table(formatear_y_resaltar(df_tot, "Prob. Over %", umbral=70, col_extra = "Prob. Under %"))
+        st.table(formatear_y_resaltar(df_tot, "Prob. Over %", (76, 70), col_extra = "Prob. Under %"))
 
     # Tabla 3: Goles por equipo y BTTS
     with col3:
         st.subheader("Goles por Equipo y BTTS")
+
         lineas_equipo = [0.5, 1.5]
         rows_eq = []
+
         for L in lineas_equipo:
-            _, oL = poisson_prob_over_under(lambda_L, L, max_k=8)
-            _, oV = poisson_prob_over_under(lambda_V, L, max_k=8)
-            rows_eq.append(
-                [f"Local marca +{L}", oL, metricas["P_match_local"]]
-            )
-            rows_eq.append(
-                [f"Visitante marca +{L}", oV, metricas["P_match_vis"]]
-            )
+            # Over
+            uL, oL = poisson_prob_over_under(lambda_L, L, max_k=8)
+            uV, oV = poisson_prob_over_under(lambda_V, L, max_k=8)
+
+            rows_eq.append([
+                f"Local marca +{L}", oL,
+                f"Local Under {L}", uL
+            ])
+
+            rows_eq.append([
+                f"Visitante marca +{L}", oV,
+                f"Visitante Under {L}", uV
+            ])
+
+        # BTTS
         btts = prob_btts(lambda_L, lambda_V, max_goals=8)
+        no_btts = 100 - btts
+
         rows_eq.append([
-            "BTTS",
-            btts,
-            (metricas["P_match_local"] + metricas["P_match_vis"]) / 2.0
+            "BTTS", btts,
+            "NO BTTS", no_btts
         ])
+
         df_eq = pd.DataFrame(
-            rows_eq, columns=["Métrica", "Probabilidad %", "Precisión"]
+            rows_eq,
+            columns=[
+                "Métrica / Over",
+                "Prob. Over %",
+                "Métrica / Under",
+                "Prob. Under %"
+            ]
         )
-        st.table(formatear_y_resaltar(df_eq, "Probabilidad %", umbral=70, col_extra="Precisión"))
+
+        st.table(
+            formatear_y_resaltar(
+                df_eq,
+                "Prob. Over %",
+                (74, 70),
+                col_extra="Prob. Under %"
+            )
+        )
         
     with col8:
         st.subheader("Goles en el 1T")
@@ -1455,7 +1480,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
             rows_1T,
             columns=["Métrica / Over 1T", "Prob. Over %", "Métrica / Under 1T", "Prob. Under %"]
         )
-        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", umbral=70, col_extra="Prob. Under %")) 
+        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", (76.9, 73), col_extra="Prob. Under %")) 
 
     # === Tabla 4 y 5 en la misma fila ===
     col4, col5 = st.columns(2)
@@ -1466,12 +1491,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         lineas_shots_total = [18.5, 19.5, 20.5, 21.5, 22.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5]
         rows_shots_tot = []
         for L in lineas_shots_total:
-            u, o = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
+            o, u = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
             rows_shots_tot.append([L, u, o])
         df_shots_tot = pd.DataFrame(
-            rows_shots_tot, columns=["Línea", "Under %", "Over %"]
+            rows_shots_tot, columns=["Línea", "Over %", "Under %"]
         )
-        st.table(formatear_y_resaltar(df_shots_tot, "Over %", umbral=70, col_extra = "Under %"))
+        st.table(formatear_y_resaltar(df_shots_tot, "Over %", (80, 75), col_extra = "Under %"))
 
     # Tabla 5: Remates por equipo
     with col5:
@@ -1487,7 +1512,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
             rows_shots_eq,
             columns=["Remates", "Local %", "Visitante %"]
         )
-        st.table(formatear_y_resaltar(df_shots_eq, "Local %", umbral=70, col_extra= "Visitante %"))
+        st.table(formatear_y_resaltar(df_shots_eq, "Local %", (80, 75), col_extra= "Visitante %"))
 
     # === Tabla 6 y 7 en la misma fila ===
     col6, col7 = st.columns(2)
@@ -1499,12 +1524,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         lineas_sot_total = [5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5]
         rows_sot_tot = []
         for L in lineas_sot_total:
-            u, o = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
+            o, u = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
             rows_sot_tot.append([L, u, o])
         df_sot_tot = pd.DataFrame(
-            rows_sot_tot, columns=["Línea", "Under %", "Over %"]
+            rows_sot_tot, columns=["Línea", "Over %", "Under %"]
         )
-        st.table(formatear_y_resaltar(df_sot_tot, "Over %", umbral=70, col_extra="Under %"))
+        st.table(formatear_y_resaltar(df_sot_tot, "Over %", (80, 75), col_extra="Under %"))
 
     # === Tabla 7: Tiros a puerta por equipo (1 por fila o en dos columnas) ===
     with col7:
@@ -1520,7 +1545,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
             rows_sot_eq,
             columns=["Tiros a puerta", "Local %", "Visitante %"]
         )
-        st.table(formatear_y_resaltar(df_sot_eq, "Local %", umbral=70, col_extra= "Visitante %"))
+        st.table(formatear_y_resaltar(df_sot_eq, "Local %", (80, 75), col_extra= "Visitante %"))
         
 def prob_a_texto_con_cuota(p):
     try:
@@ -1533,7 +1558,8 @@ def prob_a_texto_con_cuota(p):
     return f"{p_float:.1f}%   ({cuota:.2f})"
 
     
-def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
+def formatear_y_resaltar(df, col_prob, umbrales, col_extra=None):
+    umbral_verde, umbral_azul = umbrales
     df_fmt = df.reset_index(drop=True).copy()
 
     # Línea numérica
@@ -1554,15 +1580,18 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
                 v = float(val)
             except Exception:
                 v = 0.0
-            styles.append("background-color: #bbdefb" if v >= umbral else "")
+            if v >= umbral_verde:
+                styles.append("background-color: #68f78b")  
+            elif v >= umbral_azul:
+                styles.append("background-color: #bbdefb") 
+            else:
+                styles.append("")
         return styles
-
-    metric_col = df_fmt.columns[0]
 
     def _style_metric_col(col):
         return ["background-color: #fff3e0" for _ in col]
-
-    styler = df_fmt.style.hide(axis="index")
+    
+    styler = df_fmt.style.hide(axis="index")   
 
     styler = styler.set_table_styles([
         {
@@ -1571,7 +1600,17 @@ def formatear_y_resaltar(df, col_prob, umbral, col_extra=None):
         }
     ])
 
-    styler = styler.apply(_style_metric_col, subset=[metric_col], axis=0)
+    metric_cols = [
+        c for c in df_fmt.columns
+        if c not in ["Línea", col_prob, col_extra]
+    ]
+
+    
+    styler = styler.apply(
+        _style_metric_col,
+        subset=metric_cols,
+        axis=0
+    )
 
     for col in cols_prob_numericas:
         styler = styler.apply(_color_col, subset=[col], axis=0)
@@ -2201,6 +2240,18 @@ if equipo_local_nombre and equipo_visitante_nombre:
 
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
     df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
+    
+    metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all)
+    resultados = calcular_probabilidades_equipo(
+        df_local_all, df_visitante_all,
+        equipo_local_archivo=equipo_local_nombre,
+        equipo_visitante_archivo=equipo_visitante_nombre,
+    )
+
+    lambda1_L = resultados["lambda_local_1t"]
+    lambda1_V = resultados["lambda_visitante_1t"]
+
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")
     
@@ -2244,19 +2295,8 @@ if equipo_local_nombre and equipo_visitante_nombre:
             df_visitante_filtered.columns = ["Estadística", "Valor", "Racha"] # Renombrar para 'resaltar_estadistica'
             st.table(resaltar_estadistica(df_visitante_filtered))
             
-    metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all)
-    resultados = calcular_probabilidades_equipo(
-        df_local_all, df_visitante_all,
-        equipo_local_archivo=equipo_local_nombre,
-        equipo_visitante_archivo=equipo_visitante_nombre,
-    )
-
-    lambda1_L = resultados["lambda_local_1t"]
-    lambda1_V = resultados["lambda_visitante_1t"]
-
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)
-    mostrar_resultados(resultados, df_local_all, df_visitante_all)
-    
+    mostrar_resultados(resultados, df_local_all, df_visitante_all)            
+        
     st.markdown("---")
     st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
 
