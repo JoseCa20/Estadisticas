@@ -7,9 +7,17 @@ from collections import Counter
 from scipy.stats import poisson
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from io import BytesIO
+from datetime import datetime
+from partidos_manager import (
+    inicializar_lista_partidos,
+    mostrar_boton_agregar_partido
+)
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
+from partidos_manager import inicializar_lista_partidos
+inicializar_lista_partidos()
 st.title("⚽ Predicción Condicional - Apuestas Inteligentes")
 
 # === NORMALIZACIÓN DE COLUMNAS ===
@@ -1369,6 +1377,7 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("Prom. Remates Visitante", resultados.get("Prom. Remates Visitante", "N/A"))
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
+        
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
 def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
@@ -1480,7 +1489,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
             rows_1T,
             columns=["Métrica / Over 1T", "Prob. Over %", "Métrica / Under 1T", "Prob. Under %"]
         )
-        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", (76.9, 73), col_extra="Prob. Under %")) 
+        st.table(formatear_y_resaltar(df_1T, "Prob. Over %", (76.8, 73), col_extra="Prob. Under %")) 
 
     # === Tabla 4 y 5 en la misma fila ===
     col4, col5 = st.columns(2)
@@ -2247,11 +2256,84 @@ if equipo_local_nombre and equipo_visitante_nombre:
         equipo_local_archivo=equipo_local_nombre,
         equipo_visitante_archivo=equipo_visitante_nombre,
     )
+    
+    prob_tablas = {}
 
-    lambda1_L = resultados["lambda_local_1t"]
-    lambda1_V = resultados["lambda_visitante_1t"]
+    if metricas_avanzadas is not None:
+        lambda_L = metricas_avanzadas["lambda_local_new"]
+        lambda_V = metricas_avanzadas["lambda_vis_new"]
+        lambda1_L = resultados["lambda_local_1t"]
+        lambda1_V = resultados["lambda_visitante_1t"]
 
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)    
+        # 1) Resultado y dobles (Tabla 1)
+        res_1x2 = poisson_prob_1x2_y_dobles(lambda_L, lambda_V, max_goals=8)
+        prob_tablas["Local_gana"] = res_1x2["1"]
+        prob_tablas["Empate"] = res_1x2["X"]
+        prob_tablas["Visitante_gana"] = res_1x2["2"]
+        prob_tablas["1X"] = res_1x2["1X"]
+        prob_tablas["X2"] = res_1x2["X2"]
+        prob_tablas["12"] = res_1x2["12"]
+
+        # 2) Goles en el partido (Tabla 2)
+        lineas_goles = [0.5, 1.5, 2.5, 3.5]
+        for L in lineas_goles:
+            u, o = poisson_prob_total_over_under(lambda_L, lambda_V, L, max_k=8)
+            clave_over = f"Over_{L}_partido"
+            clave_under = f"Under_{L}_partido"
+            prob_tablas[clave_over] = o
+            prob_tablas[clave_under] = u
+
+        # 3) Goles por equipo y BTTS (Tabla 3)
+        for L in [0.5, 1.5]:
+            uL, oL = poisson_prob_over_under(lambda_L, L, max_k=8)
+            uV, oV = poisson_prob_over_under(lambda_V, L, max_k=8)
+            prob_tablas[f"Local_over_{L}"] = oL
+            prob_tablas[f"Local_under_{L}"] = uL
+            prob_tablas[f"Visitante_over_{L}"] = oV
+            prob_tablas[f"Visitante_under_{L}"] = uV
+
+        btts = prob_btts(lambda_L, lambda_V, max_goals=8)
+        prob_tablas["BTTS"] = btts
+        prob_tablas["NO_BTTS"] = 100 - btts
+
+        # 4) Goles en el 1T (Tabla 4)
+        for L in [0.5, 1.5]:
+            u, o = poisson_prob_total_over_under(lambda1_L, lambda1_V, L, max_k=5)
+            prob_tablas[f"Over_{L}_1T"] = o
+            prob_tablas[f"Under_{L}_1T"] = u
+
+        uL05, oL05 = poisson_prob_over_under(lambda1_L, 0.5, max_k=5)
+        uV05, oV05 = poisson_prob_over_under(lambda1_V, 0.5, max_k=5)
+        prob_tablas["Local_over_0.5_1T"] = oL05
+        prob_tablas["Local_under_0.5_1T"] = uL05
+        prob_tablas["Visitante_over_0.5_1T"] = oV05
+        prob_tablas["Visitante_under_0.5_1T"] = uV05    
+
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)   
+    
+    col_agregar = st.columns([1])
+    with col_agregar[0]:
+        if st.button(
+            "➕ **Agregar a Lista**", 
+            key=f"btn_agregar_{equipo_local_nombre}_{equipo_visitante_nombre}",
+            use_container_width=True,
+            help="Guarda este análisis en tu lista de partidos"
+        ):
+            from partidos_manager import agregar_partido_a_lista
+            if agregar_partido_a_lista(
+                equipo_local_nombre,
+                equipo_visitante_nombre,
+                prob_tablas,
+            ):
+                st.success(f"✅ {equipo_local_nombre} vs {equipo_visitante_nombre} agregado")
+    
+    if (equipo_local_nombre and equipo_visitante_nombre and
+        resultados is not None and metricas_avanzadas is not None):
+        mostrar_boton_agregar_partido(
+            equipo_local_nombre,
+            equipo_visitante_nombre,
+            prob_tablas,
+        )    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")
     
@@ -2295,7 +2377,8 @@ if equipo_local_nombre and equipo_visitante_nombre:
             df_visitante_filtered.columns = ["Estadística", "Valor", "Racha"] # Renombrar para 'resaltar_estadistica'
             st.table(resaltar_estadistica(df_visitante_filtered))
             
-    mostrar_resultados(resultados, df_local_all, df_visitante_all)            
+    mostrar_resultados(resultados, df_local_all, df_visitante_all)      
+   
         
     st.markdown("---")
     st.markdown("## 📈 Tendencia de Juego (Ataque y Defensa)")
@@ -2316,9 +2399,6 @@ if equipo_local_nombre and equipo_visitante_nombre:
 
     st.markdown("---")
     st.markdown("## 🔮 Predicción del Partido")
-
-    # Lógica de predicción y sugerencias (Usa df_local_all y df_visitante_all para el cálculo)
-    resultados = calcular_probabilidades_equipo(df_local_all, df_visitante_all)
     mostrar_resultados(resultados, df_local_all, df_visitante_all)
 
 else:
