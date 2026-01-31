@@ -2308,9 +2308,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Local_under_0.5_1T"] = uL05
         prob_tablas["Visitante_over_0.5_1T"] = oV05
         prob_tablas["Visitante_under_0.5_1T"] = uV05    
-
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)   
-    
+        
     col_agregar = st.columns([1])
     with col_agregar[0]:
         if st.button(
@@ -2334,6 +2332,8 @@ if equipo_local_nombre and equipo_visitante_nombre:
             equipo_visitante_nombre,
             prob_tablas,
         )    
+
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")
     
