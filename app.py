@@ -460,7 +460,7 @@ mapa_equipos = {
 "ru-saint-gilloise": "union sg",
 "samsunspor": "samsunspor",
 "san-lorenzo-de-almagro": "san lorenzo",
-"san-martin-de-san-juan": "chacarita juniors",
+"san-martin-de-san-juan": "san martin s.j.",
 "santa-clara": "santa clara",
 "santos-fc": "santos",
 "santos-laguna": "santos laguna",
