@@ -35,3 +35,5 @@ for archivo in archivos:
 print("\n✅ Diccionario generado:\n")
 for k, v in mapa_equipos.items():
     print(f'"{k}": "{v}",')
+    
+print(f'Numero de equipos:  {len(mapa_equipos)}')
