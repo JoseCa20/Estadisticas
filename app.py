@@ -723,6 +723,27 @@ def calcular_lambda_hibrida(df, col_goles, col_xg):
     # Evitar valores negativos o excesivamente bajos
     return max(0.1, lambda_hibrida) 
 
+def calcular_xg_por_sot(df_segmento):
+    if df_segmento is None or df_segmento.empty:
+        return 0.0
+    total_xg = df_segmento['xg_favor'].sum()
+    total_sot = df_segmento['a_puerta_favor'].sum()
+    
+    if total_sot > 0:
+        return round(total_xg / total_sot, 3)
+    return 0.0
+
+def calcular_fragilidad_defensiva(df_segmento):
+    if df_segmento is None or df_segmento.empty:
+        return 0.0
+    
+    total_xg_contra = df_segmento['xg_contra'].sum()
+    total_sot_contra = df_segmento['a_puerta_contra'].sum()
+    
+    if total_sot_contra > 0:
+        return round(total_xg_contra / total_sot_contra, 3)
+    return 0.0
+
 
 def probabilidad_poisson(lmbda, min_goles=1):
     if lmbda <= 0:
@@ -1271,8 +1292,7 @@ def mostrar_resultados(resultados, df_local, df_visitante):
     with col8:
         st.metric("Prom. Remates Visitante", resultados.get("Prom. Remates Visitante", "N/A"))
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
-        st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))
-        
+        st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))        
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
 def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
@@ -2203,6 +2223,45 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Local_under_0.5_1T"] = uL05
         prob_tablas["Visitante_over_0.5_1T"] = oV05
         prob_tablas["Visitante_under_0.5_1T"] = uV05    
+        
+        xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
+        xgsot_5_l = calcular_xg_por_sot(df_local_all.tail(5))
+        xgsot_tot_l = calcular_xg_por_sot(df_local_all)
+        val_xgsot_local = (xgsot_3_l * 0.20) + (xgsot_5_l * 0.30) + (xgsot_tot_l * 0.50)
+        
+        xgsot_3_v = calcular_xg_por_sot(df_visitante_all.tail(3))
+        xgsot_5_v = calcular_xg_por_sot(df_visitante_all.tail(5))
+        xgsot_tot_v = calcular_xg_por_sot(df_visitante_all)
+        val_xgsot_visitante = (xgsot_3_v * 0.20) + (xgsot_5_v * 0.30) + (xgsot_tot_v * 0.50)
+        
+        # prob_tablas["Peligrosidad_L"] = round(val_xgsot_local, 2)
+        # prob_tablas["Peligrosidad_V"] = round(val_xgsot_visitante, 2)
+        
+        def_3_l = calcular_fragilidad_defensiva(df_local_all.tail(3))
+        def_5_l = calcular_fragilidad_defensiva(df_local_all.tail(5))
+        def_tot_l = calcular_fragilidad_defensiva(df_local_all)
+        val_def_local = (def_3_l * 0.20) + (def_5_l * 0.30) + (def_tot_l * 0.50)
+
+        def_3_v = calcular_fragilidad_defensiva(df_visitante_all.tail(3))
+        def_5_v = calcular_fragilidad_defensiva(df_visitante_all.tail(5))
+        def_tot_v = calcular_fragilidad_defensiva(df_visitante_all)
+        val_def_visitante = (def_3_v * 0.20) + (def_5_v * 0.30) + (def_tot_v * 0.50)
+        
+        # prob_tablas["Fragilidad_L"] = round(val_def_local, 2)
+        # prob_tablas["Fragilidad_V"] = round(val_def_visitante, 2)     
+        
+        if val_def_visitante > 0:
+            peligrosidad_ajustada_l = val_xgsot_local / val_def_visitante
+        else:
+            peligrosidad_ajustada_l = val_xgsot_local
+            
+        if val_def_local > 0:
+            peligrosidad_ajustada_v = val_xgsot_visitante / val_def_local
+        else:
+            peligrosidad_ajustada_v = val_xgsot_visitante  
+            
+        prob_tablas["Peligrosidad_Ajustada_L"] = round(peligrosidad_ajustada_l, 2)
+        prob_tablas["Peligrosidad_Ajustada_V"] = round(peligrosidad_ajustada_v, 2)
         
     col_agregar = st.columns([1])
     with col_agregar[0]:

@@ -32,7 +32,9 @@ def agregar_partido_a_lista(
         # Identificación mínima
         "Local": equipo_local,
         "Visitante": equipo_visitante,
-        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        
+        "Índice Peligro L": prob_tablas["Peligrosidad_Ajustada_L"],
+        "Índice Peligro V": prob_tablas["Peligrosidad_Ajustada_V"],
 
         # ===== Resultado y Dobles (Tabla 1) =====
         "Local Gana %": prob_tablas["Local_gana"],
