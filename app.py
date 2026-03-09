@@ -2297,7 +2297,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Fragilidad_L"] = round(val_def_local, 2)
         prob_tablas["Fragilidad_V"] = round(val_def_visitante, 2)          
             
-        """  if val_def_visitante > 0:
+        if val_def_visitante > 0:
             peligrosidad_ajustada_l = val_xgsot_local / val_def_visitante
         else:
             peligrosidad_ajustada_l = val_xgsot_local
@@ -2305,10 +2305,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
         if val_def_local > 0:
             peligrosidad_ajustada_v = val_xgsot_visitante / val_def_local
         else:
-            peligrosidad_ajustada_v = val_xgsot_visitante """
+            peligrosidad_ajustada_v = val_xgsot_visitante
             
-        # prob_tablas["Peligrosidad_Ajustada_L"] = round(peligrosidad_ajustada_l, 2)
-        # prob_tablas["Peligrosidad_Ajustada_V"] = round(peligrosidad_ajustada_v, 2)
+        prob_tablas["Peligrosidad_Ajustada_L"] = round(peligrosidad_ajustada_l, 2)
+        prob_tablas["Peligrosidad_Ajustada_V"] = round(peligrosidad_ajustada_v, 2)
         
     col_agregar = st.columns([1])
     with col_agregar[0]:
