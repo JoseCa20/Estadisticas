@@ -33,8 +33,13 @@ def agregar_partido_a_lista(
         "Local": equipo_local,
         "Visitante": equipo_visitante,
         
-        "Índice Peligro L": prob_tablas["Peligrosidad_Ajustada_L"],
-        "Índice Peligro V": prob_tablas["Peligrosidad_Ajustada_V"],
+        "Índice Peligro L": prob_tablas["Peligrosidad_L"],
+        "Índice Peligro V": prob_tablas["Peligrosidad_V"],
+        "Índice Fragilidad L": prob_tablas["Fragilidad_L"],        
+        "Índice Fragilidad V": prob_tablas["Fragilidad_V"],       
+        
+        "Índice P/F L": prob_tablas["Peligrosidad_Ajustada_L"],
+        "Índice P/F V": prob_tablas["Peligrosidad_Ajustada_V"],
 
         # ===== Resultado y Dobles (Tabla 1) =====
         "Local Gana %": prob_tablas["Local_gana"],
