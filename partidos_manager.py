@@ -33,8 +33,10 @@ def agregar_partido_a_lista(
         "Local": equipo_local,
         "Visitante": equipo_visitante,        
         
-        "Remates totales L": prob_tablas["Remates_L"],
-        "Remates totales V": prob_tablas["Remates_V"],
+        "Remates Favor L": prob_tablas["Remates_favor_L"],
+        "Remates Favor V": prob_tablas["Remates_favor_V"],
+        "Remates Contra L": prob_tablas["Remates_contra_L"],
+        "Remates Contra V": prob_tablas["Remates_contra_V"],
         
         "Indice Peligro L": prob_tablas["Peligrosidad_L"],
         "Indice Peligro V": prob_tablas["Peligrosidad_V"], 

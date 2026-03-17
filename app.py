@@ -791,7 +791,7 @@ def calcular_fragilidad_defensiva(df_segmento):
         return round(total_xg_contra / total_sot_contra, 3)
     return 0.0
 
-def calcular_remates_totales(df_equipo):
+def calcular_remates_totales_favor(df_equipo):
     if df_equipo.empty:
         return 0
     
@@ -800,6 +800,21 @@ def calcular_remates_totales(df_equipo):
     if col_remates not in df_equipo.columns:
         return 0
     remates = pd.to_numeric(df_equipo[col_remates], errors='coerce').fillna(0)
+    
+    if len(remates) == 0:
+        return 0
+    
+    return remates.mean()
+
+def calcular_remates_totales_contra(df_equipo):
+    if df_equipo.empty:
+        return 0
+    
+    col_remates_contra = 'shots_contra'
+    
+    if col_remates_contra not in df_equipo.columns:
+        return 0
+    remates = pd.to_numeric(df_equipo[col_remates_contra], errors='coerce').fillna(0)
     
     if len(remates) == 0:
         return 0
@@ -2285,18 +2300,30 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Visitante_over_0.5_1T"] = oV05
         prob_tablas["Visitante_under_0.5_1T"] = uV05    
         
-        rem_3_l = calcular_remates_totales(df_local_all.tail(3))
-        rem_5_l = calcular_remates_totales(df_local_all.tail(5))
-        rem_tot_l = calcular_remates_totales(df_local_all)
-        val_remates_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
+        rem_3_l = calcular_remates_totales_favor(df_local_all.tail(3))
+        rem_5_l = calcular_remates_totales_favor(df_local_all.tail(5))
+        rem_tot_l = calcular_remates_totales_favor(df_local_all)
+        val_remates_favor_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
         
-        rem_3_v = calcular_remates_totales(df_visitante_all.tail(3))
-        rem_5_v = calcular_remates_totales(df_visitante_all.tail(5))
-        rem_tot_v = calcular_remates_totales(df_visitante_all)
-        val_remates_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
+        rem_3_v = calcular_remates_totales_favor(df_visitante_all.tail(3))
+        rem_5_v = calcular_remates_totales_favor(df_visitante_all.tail(5))
+        rem_tot_v = calcular_remates_totales_favor(df_visitante_all)
+        val_remates_favor_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
         
-        prob_tablas["Remates_L"] = round(val_remates_local, 2)
-        prob_tablas["Remates_V"] = round(val_remates_visitante, 2)     
+        rem_3_l = calcular_remates_totales_contra(df_local_all.tail(3))
+        rem_5_l = calcular_remates_totales_contra(df_local_all.tail(5))
+        rem_tot_l = calcular_remates_totales_contra(df_local_all)
+        val_remates_contra_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
+        
+        rem_3_v = calcular_remates_totales_contra(df_visitante_all.tail(3))
+        rem_5_v = calcular_remates_totales_contra(df_visitante_all.tail(5))
+        rem_tot_v = calcular_remates_totales_contra(df_visitante_all)
+        val_remates_contra_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
+        
+        prob_tablas["Remates_favor_L"] = round(val_remates_favor_local, 2)
+        prob_tablas["Remates_favor_V"] = round(val_remates_favor_visitante, 2)  
+        prob_tablas["Remates_contra_L"] = round(val_remates_contra_local, 2)
+        prob_tablas["Remates_contra_V"] = round(val_remates_contra_visitante, 2)   
         
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
         xgsot_5_l = calcular_xg_por_sot(df_local_all.tail(5))
