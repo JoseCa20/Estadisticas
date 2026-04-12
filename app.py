@@ -713,6 +713,68 @@ def media_goles_1t_liga(pais: str, n_partidos_max: int | None = None):
     return media_1t
 
 @st.cache_data
+def media_remates_liga(pais: str, condicion: str = "local", n_partidos_max: int | None = None):  
+    try:
+        df_equipos = pd.read_excel(RUTA_EQUIPOS_LIGAS)
+    except Exception as e:
+        st.error(f"No se pudo leer {RUTA_EQUIPOS_LIGAS}: {e}")
+        return 0.0, 0.0
+
+    df_equipos.columns = df_equipos.columns.str.strip().str.lower()
+    if "equipo" not in df_equipos.columns or "pais" not in df_equipos.columns:
+        st.error("La tabla equipos_ligas debe tener columnas 'equipo' y 'pais'.")
+        return 0.0, 0.0
+
+    df_pais = df_equipos[df_equipos["pais"].str.lower() == pais.lower()]
+    if df_pais.empty:
+        st.warning(f"No hay equipos registrados para el país '{pais}'.")
+        return 0.0, 0.0
+
+    total_shots_favor = 0.0
+    total_shots_contra = 0.0
+    total_partidos = 0
+
+    for equipo_archivo in df_pais["equipo"]:
+        ruta = os.path.join(RUTA_STATS, f"{equipo_archivo}.xlsx")
+        if not os.path.exists(ruta):
+            continue
+
+        df = pd.read_excel(ruta)
+        df = normalizar_columnas(df)
+
+        # Convertir columnas numéricas
+        for col in ["shots_favor", "shots_contra"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # Filtrar por condición (local o visitante)
+        if condicion == "local":
+            df_filtrado = df[df["equipo_local"].str.lower().str.contains(
+                mapa_equipos.get(equipo_archivo, equipo_archivo.replace("-", " ").lower()), na=False)]
+        else:  # visitante
+            df_filtrado = df[df["visitante"].str.lower().str.contains(
+                mapa_equipos.get(equipo_archivo, equipo_archivo.replace("-", " ").lower()), na=False)]
+
+        if n_partidos_max is not None:
+            df_filtrado = df_filtrado.tail(n_partidos_max)
+
+        # Sumar remates
+        shots_favor = df_filtrado["shots_favor"].fillna(0)
+        shots_contra = df_filtrado["shots_contra"].fillna(0)
+        
+        total_shots_favor += shots_favor.sum()
+        total_shots_contra += shots_contra.sum()
+        total_partidos += len(df_filtrado)
+
+    if total_partidos == 0:
+        return 0.0, 0.0
+
+    prom_favor = total_shots_favor / total_partidos
+    prom_contra = total_shots_contra / total_partidos
+    
+    return round(prom_favor, 1), round(prom_contra, 1)
+
+@st.cache_data
 def pais_de_equipo(equipo_archivo: str) -> str | None:
     try:
         df_equipos = pd.read_excel(RUTA_EQUIPOS_LIGAS)
@@ -1018,7 +1080,7 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
     }
     
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
-def calcular_metricas_avanzadas(df_local, df_visitante):
+def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = None, equipo_visitante_archivo = None):
     if df_local.empty or df_visitante.empty:
         return None
 
@@ -1103,60 +1165,61 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
     w10, w5, w3 = 0.50, 0.30, 0.20
 
     # Local
-    shots_fav_local_U10    = media_U(df_local, "shots_favor", 10)
-    shots_fav_local_U5     = media_U(df_local, "shots_favor", 5)
-    shots_fav_local_U3     = media_U(df_local, "shots_favor", 3)
+    shots_fav_local_U10 = media_U(df_local, "shots_favor", 10)
+    shots_fav_local_U5 = media_U(df_local, "shots_favor", 5)
+    shots_fav_local_U3 = media_U(df_local, "shots_favor", 3)
 
     shots_contra_local_U10 = media_U(df_local, "shots_contra", 10)
-    shots_contra_local_U5  = media_U(df_local, "shots_contra", 5)
-    shots_contra_local_U3  = media_U(df_local, "shots_contra", 3)
+    shots_contra_local_U5 = media_U(df_local, "shots_contra", 5)
+    shots_contra_local_U3 = media_U(df_local, "shots_contra", 3)
 
-    shots_fav_local_blend    = (
-        w10 * shots_fav_local_U10 +
-        w5  * shots_fav_local_U5 +
-        w3  * shots_fav_local_U3
-    )
-    shots_contra_local_blend = (
-        w10 * shots_contra_local_U10 +
-        w5  * shots_contra_local_U5 +
-        w3  * shots_contra_local_U3
-    )
+    shots_fav_local_blend = (w10 * shots_fav_local_U10 + w5 * shots_fav_local_U5 + w3 * shots_fav_local_U3)
+    shots_contra_local_blend = (w10 * shots_contra_local_U10 + w5 * shots_contra_local_U5 + w3 * shots_contra_local_U3)
 
     # Visitante
-    shots_fav_vis_U10    = media_U(df_visitante, "shots_favor", 10)
-    shots_fav_vis_U5     = media_U(df_visitante, "shots_favor", 5)
-    shots_fav_vis_U3     = media_U(df_visitante, "shots_favor", 3)
+    shots_fav_vis_U10 = media_U(df_visitante, "shots_favor", 10)
+    shots_fav_vis_U5 = media_U(df_visitante, "shots_favor", 5)
+    shots_fav_vis_U3 = media_U(df_visitante, "shots_favor", 3)
 
     shots_contra_vis_U10 = media_U(df_visitante, "shots_contra", 10)
-    shots_contra_vis_U5  = media_U(df_visitante, "shots_contra", 5)
-    shots_contra_vis_U3  = media_U(df_visitante, "shots_contra", 3)
+    shots_contra_vis_U5 = media_U(df_visitante, "shots_contra", 5)
+    shots_contra_vis_U3 = media_U(df_visitante, "shots_contra", 3)
 
-    shots_fav_vis_blend    = (
-        w10 * shots_fav_vis_U10 +
-        w5  * shots_fav_vis_U5 +
-        w3  * shots_fav_vis_U3
-    )
-    shots_contra_vis_blend = (
-        w10 * shots_contra_vis_U10 +
-        w5  * shots_contra_vis_U5 +
-        w3  * shots_contra_vis_U3
-    )
+    shots_fav_vis_blend = (w10 * shots_fav_vis_U10 + w5 * shots_fav_vis_U5 + w3 * shots_fav_vis_U3)
+    shots_contra_vis_blend = (w10 * shots_contra_vis_U10 + w5 * shots_contra_vis_U5 + w3 * shots_contra_vis_U3)
 
-    # Lambdas de remates por ataque cruzado con defensa rival
-    Remates_att_local = (shots_fav_local_blend + shots_contra_vis_blend) / 2.0
-    Remates_att_vis   = (shots_fav_vis_blend   + shots_contra_local_blend) / 2.0
+    # === OBTENER BASELINE DE LIGA (NUEVO) ===
+    df_local_name = equipo_local_archivo 
+    df_visitante_name = equipo_visitante_archivo
+
+    pais_local = pais_de_equipo(equipo_local_archivo) if equipo_local_archivo else None
+    pais_vis = pais_de_equipo(equipo_visitante_archivo) if equipo_visitante_archivo else None    
+
+    if pais_local and pais_vis:
+        liga_shots_local_fav, liga_shots_local_contra = media_remates_liga(pais_local, "local")
+        liga_shots_vis_fav, liga_shots_vis_contra = media_remates_liga(pais_vis, "visitante")
+    else:
+        liga_shots_local_fav, liga_shots_local_contra = 12.5, 11.8
+        liga_shots_vis_fav, liga_shots_vis_contra = 10.8, 12.2    
+
+    # === PROYECCIÓN DEPENDIENTE (CORREGIDA) ===
+    rel_ataque_local = shots_fav_local_blend / max(liga_shots_local_fav, 1)
+    rel_defensa_vis = shots_contra_vis_blend / max(liga_shots_vis_contra, 1)
+    Remates_att_local = liga_shots_local_fav * rel_ataque_local * rel_defensa_vis
+
+    rel_ataque_vis = shots_fav_vis_blend / max(liga_shots_vis_fav, 1)
+    rel_defensa_local = shots_contra_local_blend / max(liga_shots_local_contra, 1)
+    Remates_att_vis = liga_shots_vis_fav * rel_ataque_vis * rel_defensa_local    
 
     Remates_att_local = max(Remates_att_local, 0.01)
-    Remates_att_vis   = max(Remates_att_vis, 0.01)
+    Remates_att_vis = max(Remates_att_vis, 0.01)
 
     # --- TIROS A PUERTA ESPERADOS (SoT) ---
     SoT_local = Remates_att_local * P_match_local
-    SoT_vis   = Remates_att_vis   * P_match_vis
+    SoT_vis = Remates_att_vis * P_match_vis
 
     SoT_local = max(SoT_local, 0.01)
-    SoT_vis   = max(SoT_vis, 0.01)
-    
-    
+    SoT_vis = max(SoT_vis, 0.01)    
 
     return {
         "GF_local_blend": GF_local,
@@ -1193,6 +1256,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante):
         "P_match_vis": P_match_vis,
         "Remates_att_local": Remates_att_local,
         "Remates_att_vis": Remates_att_vis,
+        "liga_shots_local_fav": liga_shots_local_fav,
+        "liga_shots_vis_fav": liga_shots_vis_fav,
         "SoT_local": SoT_local,
         "SoT_vis": SoT_vis
     }
@@ -1268,15 +1333,15 @@ def calcular_probabilidades_equipo(df_local, df_visitante,
         "Prob. Visitante 2T": prob_over05_equipo_1t(lambda_visitante_2t),
 
         # Remates / SoT (igual que antes)
-        "Prom. Remates Local": round(df_local_5["shots_favor"].mean(), 1),
-        "Prom. Remates Visitante": round(df_visitante_5["shots_favor"].mean(), 1),
+        "Prom. Remates Local": round(metricas_avanzadas["Remates_att_local"], 1),
+        "Prom. Remates Visitante": round(metricas_avanzadas["Remates_att_vis"], 1),
         "Total Remates": round(
-            df_local_5["shots_favor"].mean() + df_visitante_5["shots_favor"].mean(), 1
+            metricas_avanzadas["Remates_att_local"] + metricas_avanzadas["Remates_att_vis"], 1
         ),
-        "A puerta Local": round(df_local_5["a_puerta_favor"].mean(), 1),
-        "A puerta Visitante": round(df_visitante_5["a_puerta_favor"].mean(), 1),
+        "A puerta Local": round(metricas_avanzadas["SoT_local"], 1),
+        "A puerta Visitante": round(metricas_avanzadas["SoT_vis"], 1),
         "Total A puerta": round(
-            df_local_5["a_puerta_favor"].mean() + df_visitante_5["a_puerta_favor"].mean(), 1
+            metricas_avanzadas["SoT_local"] + metricas_avanzadas["SoT_vis"], 1
         ),
 
         # Overs totales 90'
@@ -2281,7 +2346,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
     df_stats_local = pd.DataFrame(stats_local) if stats_local else pd.DataFrame()
     df_stats_visitante = pd.DataFrame(stats_visitante) if stats_visitante else pd.DataFrame()
     
-    metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all)
+    metricas_avanzadas = calcular_metricas_avanzadas(df_local_all, df_visitante_all, equipo_local_archivo=equipo_local_nombre, equipo_visitante_archivo=equipo_visitante_nombre)
     resultados = calcular_probabilidades_equipo(
         df_local_all, df_visitante_all,
         equipo_local_archivo=equipo_local_nombre,
@@ -2360,10 +2425,16 @@ if equipo_local_nombre and equipo_visitante_nombre:
         rem_tot_v = calcular_remates_totales_contra(df_visitante_all)
         val_remates_contra_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
         
-        prob_tablas["Remates_favor_L"] = round(val_remates_favor_local, 2)
-        prob_tablas["Remates_favor_V"] = round(val_remates_favor_visitante, 2)  
-        prob_tablas["Remates_contra_L"] = round(val_remates_contra_local, 2)
-        prob_tablas["Remates_contra_V"] = round(val_remates_contra_visitante, 2)   
+        prob_tablas["Remates_favor_L"] = round(metricas_avanzadas["Remates_att_local"], 1)
+        prob_tablas["Remates_favor_V"] = round(metricas_avanzadas["Remates_att_vis"], 1)
+        prob_tablas["Remates_contra_L"] = round(val_remates_contra_local, 1)
+        prob_tablas["Remates_contra_V"] = round(val_remates_contra_visitante, 1)
+        
+        prob_tablas["Liga_Local_Fav"] = round(metricas_avanzadas["liga_shots_local_fav"], 1)
+        prob_tablas["Liga_Vis_Fav"] = round(metricas_avanzadas["liga_shots_vis_fav"], 1)
+        prob_tablas["Total_Remates_Proy"] = round(
+            metricas_avanzadas["Remates_att_local"] + metricas_avanzadas["Remates_att_vis"], 1
+        )
         
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
         xgsot_5_l = calcular_xg_por_sot(df_local_all.tail(5))
