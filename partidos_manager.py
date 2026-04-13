@@ -33,7 +33,6 @@ def agregar_partido_a_lista(
         "Local": equipo_local,
         "Visitante": equipo_visitante,    
             
-        "Proy Remates" : prob_tablas["Total_Remates_Proy"],
         "Remates Favor L": prob_tablas["Remates_favor_L"],
         "Remates Favor V": prob_tablas["Remates_favor_V"],
         "Remates Contra L": prob_tablas["Remates_contra_L"],

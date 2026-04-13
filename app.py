@@ -2432,10 +2432,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         
         prob_tablas["Liga_Local_Fav"] = round(metricas_avanzadas["liga_shots_local_fav"], 1)
         prob_tablas["Liga_Vis_Fav"] = round(metricas_avanzadas["liga_shots_vis_fav"], 1)
-        prob_tablas["Total_Remates_Proy"] = round(
-            metricas_avanzadas["Remates_att_local"] + metricas_avanzadas["Remates_att_vis"], 1
-        )
-        
+                
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
         xgsot_5_l = calcular_xg_por_sot(df_local_all.tail(5))
         xgsot_tot_l = calcular_xg_por_sot(df_local_all)
