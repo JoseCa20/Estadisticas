@@ -37,14 +37,15 @@ def agregar_partido_a_lista(
         "Remates Favor V": prob_tablas["Remates_favor_V"],
         "Remates Contra L": prob_tablas["Remates_contra_L"],
         "Remates Contra V": prob_tablas["Remates_contra_V"],
+        "Rango Remates L": prob_tablas.get("Rango_Remates_L", "N/A"),
+        "Rango Remates V": prob_tablas.get("Rango_Remates_V", "N/A"),
+        "Confianza Remates L": prob_tablas.get("Confianza_Remates_L", "N/A"),
+        "Confianza Remates V": prob_tablas.get("Confianza_Remates_V", "N/A"),
         
         "Indice Peligro L": prob_tablas["Peligrosidad_L"],
         "Indice Peligro V": prob_tablas["Peligrosidad_V"], 
         "Indice Fragilidad L": prob_tablas["Fragilidad_L"],                      
-        "Indice Fragilidad V": prob_tablas["Fragilidad_V"],       
-        
-        "Indice P*F L": prob_tablas["Peligrosidad_Ajustada_L"],
-        "Indice P*F V": prob_tablas["Peligrosidad_Ajustada_V"],        
+        "Indice Fragilidad V": prob_tablas["Fragilidad_V"],              
 
         # ===== Resultado y Dobles (Tabla 1) =====
         "Local Gana %": prob_tablas["Local_gana"],
