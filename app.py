@@ -1083,126 +1083,114 @@ def resumen_ventana(df, col, n):
         "cv": cv
     }
     
-def etiqueta_confianza_remates(cv):
-    if cv <= 0.20:
+def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
+    w10, w5, w3 = pesos
+
+    r10 = resumen_ventana(df, col, 10)
+    r5 = resumen_ventana(df, col, 5)
+    r3 = resumen_ventana(df, col, 3)
+
+    def mix(key):
+        return (
+            w10 * r10.get(key, 0.0) +
+            w5 * r5.get(key, 0.0) +
+            w3 * r3.get(key, 0.0)
+        )
+
+    media = mix("media")
+    media_winsor = mix("media_winsor")
+    mediana = mix("mediana")
+    p25 = mix("p25")
+    p75 = mix("p75")
+    std = mix("std")
+    cv = mix("cv")
+
+    centro = (
+        0.20 * media +
+        0.50 * media_winsor +
+        0.30 * mediana
+    )
+
+    return {
+        "media": media,
+        "media_winsor": media_winsor,
+        "mediana": mediana,
+        "p25": p25,
+        "p75": p75,
+        "std": std,
+        "cv": cv,
+        "centro": centro,
+        "r10": r10,
+        "r5": r5,
+        "r3": r3
+    }
+
+
+def etiqueta_confianza_por_cv(cv):
+    if cv <= 0.22:
         return "Alta"
     if cv <= 0.35:
         return "Media"
     return "Baja"
 
 
-def factor_estabilidad_remates(cv_ataque, cv_rival):
-    cv_mix = (float(cv_ataque) + float(cv_rival)) / 2.0
-    factor = 1 - 0.22 * cv_mix
-    return float(min(1.00, max(0.82, factor)))
+def proyectar_remates_robustos(
+    df_equipo,
+    df_rival,
+    media_liga_favor,
+    media_liga_contra_rival,
+    col_favor="shots_favor",
+    col_contra_rival="shots_contra"
+):
+    own = blend_resumenes_10_5_3(df_equipo, col_favor)
+    opp = blend_resumenes_10_5_3(df_rival, col_contra_rival)
 
+    centro_ataque = own["centro"]
+    centro_rival = opp["centro"]
 
-def resumen_ventanas_remates(df, col):
-    return {
-        "U10": resumen_ventana(df, col, 10),
-        "U5": resumen_ventana(df, col, 5),
-        "U3": resumen_ventana(df, col, 3),
-    }
-
-
-def blend_resumenes_remates(resumenes):
-    w10, w5, w3 = 0.50, 0.30, 0.20
-    return {
-        "media": (
-            w10 * resumenes["U10"]["media"] +
-            w5 * resumenes["U5"]["media"] +
-            w3 * resumenes["U3"]["media"]
-        ),
-        "media_winsor": (
-            w10 * resumenes["U10"]["media_winsor"] +
-            w5 * resumenes["U5"]["media_winsor"] +
-            w3 * resumenes["U3"]["media_winsor"]
-        ),
-        "mediana": (
-            w10 * resumenes["U10"]["mediana"] +
-            w5 * resumenes["U5"]["mediana"] +
-            w3 * resumenes["U3"]["mediana"]
-        ),
-        "p25": (
-            w10 * resumenes["U10"]["p25"] +
-            w5 * resumenes["U5"]["p25"] +
-            w3 * resumenes["U3"]["p25"]
-        ),
-        "p75": (
-            w10 * resumenes["U10"]["p75"] +
-            w5 * resumenes["U5"]["p75"] +
-            w3 * resumenes["U3"]["p75"]
-        ),
-        "std": (
-            w10 * resumenes["U10"]["std"] +
-            w5 * resumenes["U5"]["std"] +
-            w3 * resumenes["U3"]["std"]
-        ),
-        "cv": (
-            w10 * resumenes["U10"]["cv"] +
-            w5 * resumenes["U5"]["cv"] +
-            w3 * resumenes["U3"]["cv"]
-        ),
-    }
-
-
-def proyectar_remates_robustos(blend_favor, blend_contra_rival, liga_favor, liga_contra_rival):
-    liga_favor = max(float(liga_favor), 1.0)
-    liga_contra_rival = max(float(liga_contra_rival), 1.0)
-
-    base_matchup = (
-        liga_favor *
-        (blend_favor["media"] / liga_favor) *
-        (blend_contra_rival["media"] / liga_contra_rival)
-    )
-
-    nucleo_robusto = (
-        0.65 * blend_favor["media_winsor"] +
-        0.35 * blend_favor["mediana"]
-    )
-
-    ajuste_rival = (
-        0.65 * blend_contra_rival["media_winsor"] +
-        0.35 * blend_contra_rival["mediana"]
-    )
+    rel_ataque = centro_ataque / max(media_liga_favor, 1.0)
+    rel_defensa = centro_rival / max(media_liga_contra_rival, 1.0)
+    base_matchup = media_liga_favor * rel_ataque * rel_defensa
 
     proy_bruta = (
         0.40 * base_matchup +
-        0.35 * nucleo_robusto +
-        0.15 * blend_favor["mediana"] +
-        0.10 * ajuste_rival
+        0.35 * centro_ataque +
+        0.20 * centro_rival +
+        0.05 * media_liga_favor
     )
 
-    factor_estabilidad = factor_estabilidad_remates(
-        blend_favor["cv"],
-        blend_contra_rival["cv"]
+    cv_mix = 0.60 * own["cv"] + 0.40 * opp["cv"]
+    factor_vol = max(0.85, min(1.02, 1 - 0.18 * cv_mix))
+    proy_final = max(proy_bruta * factor_vol, 0.01)
+
+    rango_bajo = (
+        0.55 * own["p25"] +
+        0.30 * opp["p25"] +
+        0.15 * proy_final
     )
 
-    proy_final = max(0.01, proy_bruta * factor_estabilidad)
-
-    rango_bajo = max(
-        0.0,
-        0.55 * blend_favor["p25"] + 0.45 * blend_contra_rival["p25"]
+    rango_alto = (
+        0.55 * own["p75"] +
+        0.30 * opp["p75"] +
+        0.15 * proy_final
     )
 
-    rango_alto = max(
-        rango_bajo,
-        0.55 * blend_favor["p75"] + 0.45 * blend_contra_rival["p75"]
-    )
-
-    cv_mix = (blend_favor["cv"] + blend_contra_rival["cv"]) / 2.0
+    if rango_bajo > proy_final:
+        rango_bajo = 0.92 * proy_final
+    if rango_alto < proy_final:
+        rango_alto = 1.08 * proy_final
 
     return {
-        "base_matchup": float(base_matchup),
-        "nucleo_robusto": float(nucleo_robusto),
-        "ajuste_rival": float(ajuste_rival),
-        "proyeccion_bruta": float(proy_bruta),
-        "factor_estabilidad": float(factor_estabilidad),
-        "proyeccion": float(proy_final),
-        "rango_bajo": float(rango_bajo),
-        "rango_alto": float(rango_alto),
-        "cv_mix": float(cv_mix),
-        "confianza": etiqueta_confianza_remates(cv_mix),
+        "proyeccion": proy_final,
+        "base_matchup": base_matchup,
+        "centro_ataque": centro_ataque,
+        "centro_rival": centro_rival,
+        "cv": cv_mix,
+        "confianza": etiqueta_confianza_por_cv(cv_mix),
+        "rango_bajo": max(rango_bajo, 0.01),
+        "rango_alto": max(rango_alto, 0.01),
+        "ataque": own,
+        "rival": opp
     }
 
 def poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8):
@@ -1344,50 +1332,40 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
     P_match_local = (P_att_local + P_def_local) / 2.0
     P_match_vis = (P_att_vis + P_def_vis) / 2.0
 
-    # === REMATES ROBUSTOS: U10/U5/U3 + WINSOR + MEDIANA + VOLATILIDAD ===
-    shots_favor_local_resumenes = resumen_ventanas_remates(df_local, "shots_favor")
-    shots_contra_local_resumenes = resumen_ventanas_remates(df_local, "shots_contra")
-
-    shots_favor_vis_resumenes = resumen_ventanas_remates(df_visitante, "shots_favor")
-    shots_contra_vis_resumenes = resumen_ventanas_remates(df_visitante, "shots_contra")
-
-    shots_favor_local_blend = blend_resumenes_remates(shots_favor_local_resumenes)
-    shots_contra_local_blend = blend_resumenes_remates(shots_contra_local_resumenes)
-
-    shots_favor_vis_blend = blend_resumenes_remates(shots_favor_vis_resumenes)
-    shots_contra_vis_blend = blend_resumenes_remates(shots_contra_vis_resumenes)
-    
-    # === OBTENER BASELINE DE LIGA (NUEVO) ===
-    df_local_name = equipo_local_archivo 
+        # === REMATES ROBUSTOS: WINSOR, MEDIANA, PERCENTILES, STD, CV ===
+    df_local_name = equipo_local_archivo
     df_visitante_name = equipo_visitante_archivo
 
     pais_local = pais_de_equipo(equipo_local_archivo) if equipo_local_archivo else None
-    pais_vis = pais_de_equipo(equipo_visitante_archivo) if equipo_visitante_archivo else None    
+    pais_vis = pais_de_equipo(equipo_visitante_archivo) if equipo_visitante_archivo else None
 
     if pais_local and pais_vis:
         liga_shots_local_fav, liga_shots_local_contra = media_remates_liga(pais_local, "local")
         liga_shots_vis_fav, liga_shots_vis_contra = media_remates_liga(pais_vis, "visitante")
     else:
         liga_shots_local_fav, liga_shots_local_contra = 12.5, 11.8
-        liga_shots_vis_fav, liga_shots_vis_contra = 10.8, 12.2    
+        liga_shots_vis_fav, liga_shots_vis_contra = 10.8, 12.2
 
-    # === PROYECCIÓN ROBUSTA DE REMATES ===
-    proy_remates_local = proyectar_remates_robustos(
-        shots_favor_local_blend,
-        shots_contra_vis_blend,
-        liga_shots_local_fav,
-        liga_shots_vis_contra,
+    remates_local_obj = proyectar_remates_robustos(
+        df_equipo=df_local,
+        df_rival=df_visitante,
+        media_liga_favor=liga_shots_local_fav,
+        media_liga_contra_rival=liga_shots_vis_contra,
+        col_favor="shots_favor",
+        col_contra_rival="shots_contra"
     )
 
-    proy_remates_vis = proyectar_remates_robustos(
-        shots_favor_vis_blend,
-        shots_contra_local_blend,
-        liga_shots_vis_fav,
-        liga_shots_local_contra,
+    remates_vis_obj = proyectar_remates_robustos(
+        df_equipo=df_visitante,
+        df_rival=df_local,
+        media_liga_favor=liga_shots_vis_fav,
+        media_liga_contra_rival=liga_shots_local_contra,
+        col_favor="shots_favor",
+        col_contra_rival="shots_contra"
     )
 
-    Remates_att_local = max(proy_remates_local["proyeccion"], 0.01)
-    Remates_att_vis = max(proy_remates_vis["proyeccion"], 0.01)
+    Remates_att_local = max(remates_local_obj["proyeccion"], 0.01)
+    Remates_att_vis = max(remates_vis_obj["proyeccion"], 0.01)
 
     # --- TIROS A PUERTA ESPERADOS (SoT) ---
     SoT_local = Remates_att_local * P_match_local
@@ -1431,14 +1409,55 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "P_match_vis": P_match_vis,
         "Remates_att_local": Remates_att_local,
         "Remates_att_vis": Remates_att_vis,
+        "Remates_base_matchup_local": remates_local_obj["base_matchup"],
+        "Remates_base_matchup_vis": remates_vis_obj["base_matchup"],
+
+        "Remates_rango_local_low": remates_local_obj["rango_bajo"],
+        "Remates_rango_local_high": remates_local_obj["rango_alto"],
+        "Remates_rango_vis_low": remates_vis_obj["rango_bajo"],
+        "Remates_rango_vis_high": remates_vis_obj["rango_alto"],
+
+        "Remates_cv_local": remates_local_obj["cv"],
+        "Remates_cv_vis": remates_vis_obj["cv"],
+        "Remates_confianza_local": remates_local_obj["confianza"],
+        "Remates_confianza_vis": remates_vis_obj["confianza"],
+
+        "Remates_centro_ataque_local": remates_local_obj["centro_ataque"],
+        "Remates_centro_rival_local": remates_local_obj["centro_rival"],
+        "Remates_centro_ataque_vis": remates_vis_obj["centro_ataque"],
+        "Remates_centro_rival_vis": remates_vis_obj["centro_rival"],
+
+        "Remates_media_winsor_local": remates_local_obj["ataque"]["media_winsor"],
+        "Remates_mediana_local": remates_local_obj["ataque"]["mediana"],
+        "Remates_p25_local": remates_local_obj["ataque"]["p25"],
+        "Remates_p75_local": remates_local_obj["ataque"]["p75"],
+        "Remates_std_local": remates_local_obj["ataque"]["std"],
+
+        "Remates_media_winsor_vis": remates_vis_obj["ataque"]["media_winsor"],
+        "Remates_mediana_vis": remates_vis_obj["ataque"]["mediana"],
+        "Remates_p25_vis": remates_vis_obj["ataque"]["p25"],
+        "Remates_p75_vis": remates_vis_obj["ataque"]["p75"],
+        "Remates_std_vis": remates_vis_obj["ataque"]["std"],
+        
+        "shots_favor_local_blend_media": remates_local_obj["ataque"]["media"],
+        "shots_favor_local_blend_media_winsor": remates_local_obj["ataque"]["media_winsor"],
+        "shots_favor_local_blend_mediana": remates_local_obj["ataque"]["mediana"],
+        "shots_favor_local_blend_p25": remates_local_obj["ataque"]["p25"],
+        "shots_favor_local_blend_p75": remates_local_obj["ataque"]["p75"],
+        "shots_favor_local_blend_std": remates_local_obj["ataque"]["std"],
+        "shots_favor_local_blend_cv": remates_local_obj["ataque"]["cv"],
+        "shots_favor_local_blend_centro": remates_local_obj["ataque"]["centro"],
+
+        "shots_favor_vis_blend_media": remates_vis_obj["ataque"]["media"],
+        "shots_favor_vis_blend_media_winsor": remates_vis_obj["ataque"]["media_winsor"],
+        "shots_favor_vis_blend_mediana": remates_vis_obj["ataque"]["mediana"],
+        "shots_favor_vis_blend_p25": remates_vis_obj["ataque"]["p25"],
+        "shots_favor_vis_blend_p75": remates_vis_obj["ataque"]["p75"],
+        "shots_favor_vis_blend_std": remates_vis_obj["ataque"]["std"],
+        "shots_favor_vis_blend_cv": remates_vis_obj["ataque"]["cv"],
+        "shots_favor_vis_blend_centro": remates_vis_obj["ataque"]["centro"],
         "liga_shots_local_fav": liga_shots_local_fav,
-        "liga_shots_vis_fav": liga_shots_vis_fav,
-        "shots_favor_local_blend": shots_favor_local_blend,
-        "shots_contra_local_blend": shots_contra_local_blend,
-        "shots_favor_vis_blend": shots_favor_vis_blend,
-        "shots_contra_vis_blend": shots_contra_vis_blend,
-        "proy_remates_local": proy_remates_local,
-        "proy_remates_vis": proy_remates_vis,
+        "liga_shots_vis_fav": liga_shots_vis_fav,        
         "SoT_local": SoT_local,
         "SoT_vis": SoT_vis
     }
@@ -1519,6 +1538,14 @@ def calcular_probabilidades_equipo(df_local, df_visitante,
         "Total Remates": round(
             metricas_avanzadas["Remates_att_local"] + metricas_avanzadas["Remates_att_vis"], 1
         ),
+        
+        "Rango Remates Local": f"{metricas_avanzadas['Remates_rango_local_low']:.1f} - {metricas_avanzadas['Remates_rango_local_high']:.1f}",
+        "Rango Remates Visitante": f"{metricas_avanzadas['Remates_rango_vis_low']:.1f} - {metricas_avanzadas['Remates_rango_vis_high']:.1f}",
+        "Confianza Remates Local": metricas_avanzadas["Remates_confianza_local"],
+        "Confianza Remates Visitante": metricas_avanzadas["Remates_confianza_vis"],
+        "CV Remates Local": round(metricas_avanzadas["Remates_cv_local"], 3),
+        "CV Remates Visitante": round(metricas_avanzadas["Remates_cv_vis"], 3),
+        
         "A puerta Local": round(metricas_avanzadas["SoT_local"], 1),
         "A puerta Visitante": round(metricas_avanzadas["SoT_vis"], 1),
         "Total A puerta": round(
@@ -2586,16 +2613,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Visitante_over_0.5_1T"] = oV05
         prob_tablas["Visitante_under_0.5_1T"] = uV05    
         
-        rem_3_l = calcular_remates_totales_favor(df_local_all.tail(3))
-        rem_5_l = calcular_remates_totales_favor(df_local_all.tail(5))
-        rem_tot_l = calcular_remates_totales_favor(df_local_all)
-        val_remates_favor_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
+        prob_tablas["Remates_favor_L"] = round(metricas_avanzadas["Remates_att_local"], 1)
+        prob_tablas["Remates_favor_V"] = round(metricas_avanzadas["Remates_att_vis"], 1)
         
-        rem_3_v = calcular_remates_totales_favor(df_visitante_all.tail(3))
-        rem_5_v = calcular_remates_totales_favor(df_visitante_all.tail(5))
-        rem_tot_v = calcular_remates_totales_favor(df_visitante_all)
-        val_remates_favor_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
-        
+        # Remates contra (mantener cálculo tradicional por ahora)
         rem_3_l = calcular_remates_totales_contra(df_local_all.tail(3))
         rem_5_l = calcular_remates_totales_contra(df_local_all.tail(5))
         rem_tot_l = calcular_remates_totales_contra(df_local_all)
@@ -2606,57 +2627,58 @@ if equipo_local_nombre and equipo_visitante_nombre:
         rem_tot_v = calcular_remates_totales_contra(df_visitante_all)
         val_remates_contra_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
         
-        prob_tablas["Remates_favor_L"] = round(metricas_avanzadas["Remates_att_local"], 1)
-        prob_tablas["Remates_favor_V"] = round(metricas_avanzadas["Remates_att_vis"], 1)
         prob_tablas["Remates_contra_L"] = round(val_remates_contra_local, 1)
         prob_tablas["Remates_contra_V"] = round(val_remates_contra_visitante, 1)
 
+        # Medias de liga
         prob_tablas["Liga_Local_Fav"] = round(metricas_avanzadas["liga_shots_local_fav"], 1)
         prob_tablas["Liga_Vis_Fav"] = round(metricas_avanzadas["liga_shots_vis_fav"], 1)
 
+        # === MÉTRICAS ROBUSTAS CORREGIDAS ===
         prob_tablas["Rango_Remates_L"] = (
-            f"{metricas_avanzadas['proy_remates_local']['rango_bajo']:.1f}-"
-            f"{metricas_avanzadas['proy_remates_local']['rango_alto']:.1f}"
+            f"{metricas_avanzadas['Remates_rango_local_low']:.1f}-"
+            f"{metricas_avanzadas['Remates_rango_local_high']:.1f}"
         )
         prob_tablas["Rango_Remates_V"] = (
-            f"{metricas_avanzadas['proy_remates_vis']['rango_bajo']:.1f}-"
-            f"{metricas_avanzadas['proy_remates_vis']['rango_alto']:.1f}"
+            f"{metricas_avanzadas['Remates_rango_vis_low']:.1f}-"
+            f"{metricas_avanzadas['Remates_rango_vis_high']:.1f}"
         )
 
-        prob_tablas["Confianza_Remates_L"] = metricas_avanzadas["proy_remates_local"]["confianza"]
-        prob_tablas["Confianza_Remates_V"] = metricas_avanzadas["proy_remates_vis"]["confianza"]
+        prob_tablas["Confianza_Remates_L"] = metricas_avanzadas["Remates_confianza_local"]
+        prob_tablas["Confianza_Remates_V"] = metricas_avanzadas["Remates_confianza_vis"]
 
-        prob_tablas["CV_Remates_L"] = round(metricas_avanzadas["proy_remates_local"]["cv_mix"], 3)
-        prob_tablas["CV_Remates_V"] = round(metricas_avanzadas["proy_remates_vis"]["cv_mix"], 3)
+        prob_tablas["CV_Remates_L"] = round(metricas_avanzadas["Remates_cv_local"], 3)
+        prob_tablas["CV_Remates_V"] = round(metricas_avanzadas["Remates_cv_vis"], 3)
 
-        prob_tablas["Win_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend"]["media_winsor"], 2)
-        prob_tablas["Win_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend"]["media_winsor"], 2)
+        # BLENDS detallados
+        prob_tablas["Win_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_media_winsor"], 2)
+        prob_tablas["Win_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_media_winsor"], 2)
 
-        prob_tablas["Mediana_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend"]["mediana"], 2)
-        prob_tablas["Mediana_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend"]["mediana"], 2)
+        prob_tablas["Mediana_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_mediana"], 2)
+        prob_tablas["Mediana_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_mediana"], 2)
 
-        prob_tablas["P25_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend"]["p25"], 2)
-        prob_tablas["P75_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend"]["p75"], 2)
+        prob_tablas["P25_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_p25"], 2)
+        prob_tablas["P75_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_p75"], 2)
+        prob_tablas["P25_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_p25"], 2)
+        prob_tablas["P75_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_p75"], 2)
 
-        prob_tablas["P25_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend"]["p25"], 2)
-        prob_tablas["P75_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend"]["p75"], 2)
+        prob_tablas["STD_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_std"], 2)
+        prob_tablas["STD_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_std"], 2)
 
-        prob_tablas["STD_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend"]["std"], 2)
-        prob_tablas["STD_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend"]["std"], 2)
-                
+        # Peligrosidad y Fragilidad (mantener cálculo tradicional)
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
         xgsot_5_l = calcular_xg_por_sot(df_local_all.tail(5))
         xgsot_tot_l = calcular_xg_por_sot(df_local_all)
         val_xgsot_local = (xgsot_3_l * 0.20) + (xgsot_5_l * 0.30) + (xgsot_tot_l * 0.50)
-        
+
         xgsot_3_v = calcular_xg_por_sot(df_visitante_all.tail(3))
         xgsot_5_v = calcular_xg_por_sot(df_visitante_all.tail(5))
         xgsot_tot_v = calcular_xg_por_sot(df_visitante_all)
         val_xgsot_visitante = (xgsot_3_v * 0.20) + (xgsot_5_v * 0.30) + (xgsot_tot_v * 0.50)
-        
+
         prob_tablas["Peligrosidad_L"] = round(val_xgsot_local, 2)
         prob_tablas["Peligrosidad_V"] = round(val_xgsot_visitante, 2)
-        
+
         def_3_l = calcular_fragilidad_defensiva(df_local_all.tail(3))
         def_5_l = calcular_fragilidad_defensiva(df_local_all.tail(5))
         def_tot_l = calcular_fragilidad_defensiva(df_local_all)
@@ -2666,22 +2688,16 @@ if equipo_local_nombre and equipo_visitante_nombre:
         def_5_v = calcular_fragilidad_defensiva(df_visitante_all.tail(5))
         def_tot_v = calcular_fragilidad_defensiva(df_visitante_all)
         val_def_visitante = (def_3_v * 0.20) + (def_5_v * 0.30) + (def_tot_v * 0.50)
-        
+
         prob_tablas["Fragilidad_L"] = round(val_def_local, 2)
-        prob_tablas["Fragilidad_V"] = round(val_def_visitante, 2)          
-            
-        if val_def_visitante > 0:
-            peligrosidad_ajustada_l = val_xgsot_local * val_def_visitante
-        else:
-            peligrosidad_ajustada_l = val_xgsot_local
-            
-        if val_def_local > 0:
-            peligrosidad_ajustada_v = val_xgsot_visitante * val_def_local
-        else:
-            peligrosidad_ajustada_v = val_xgsot_visitante
-            
+        prob_tablas["Fragilidad_V"] = round(val_def_visitante, 2)
+
+        # Peligrosidad ajustada
+        peligrosidad_ajustada_l = val_xgsot_local * val_def_visitante if val_def_visitante > 0 else val_xgsot_local
+        peligrosidad_ajustada_v = val_xgsot_visitante * val_def_local if val_def_local > 0 else val_xgsot_visitante
         prob_tablas["Peligrosidad_Ajustada_L"] = round(peligrosidad_ajustada_l, 2)
-        prob_tablas["Peligrosidad_Ajustada_V"] = round(peligrosidad_ajustada_v, 2)          
+        prob_tablas["Peligrosidad_Ajustada_V"] = round(peligrosidad_ajustada_v, 2)
+         
         
     col_agregar = st.columns([1])
     with col_agregar[0]:
