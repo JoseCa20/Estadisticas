@@ -56,38 +56,38 @@ def agregar_partido_a_lista(
         "12 %": prob_tablas["12"],
 
         # ===== Goles en el Partido (Tabla 2) =====
-        "Over 0.5 %": prob_tablas["Over_0.5_partido"],
-        "Under 0.5 %": prob_tablas["Under_0.5_partido"],
-        "Over 1.5 %": prob_tablas["Over_1.5_partido"],
-        "Under 1.5 %": prob_tablas["Under_1.5_partido"],
+        # "Over 0.5 %": prob_tablas["Over_0.5_partido"],
+        # "Under 0.5 %": prob_tablas["Under_0.5_partido"],
+        # "Over 1.5 %": prob_tablas["Over_1.5_partido"],
+        # "Under 1.5 %": prob_tablas["Under_1.5_partido"],
         "Over 2.5 %": prob_tablas["Over_2.5_partido"],
-        "Under 2.5 %": prob_tablas["Under_2.5_partido"],
-        "Over 3.5 %": prob_tablas["Over_3.5_partido"],
-        "Under 3.5 %": prob_tablas["Under_3.5_partido"],
+        # "Under 2.5 %": prob_tablas["Under_2.5_partido"],
+        # "Over 3.5 %": prob_tablas["Over_3.5_partido"],
+        # "Under 3.5 %": prob_tablas["Under_3.5_partido"],
 
         # ===== Goles por Equipo (Tabla 3) =====
         "Local Over 0.5 %": prob_tablas["Local_over_0.5"],
-        "Local Under 0.5 %": prob_tablas["Local_under_0.5"],
+        # "Local Under 0.5 %": prob_tablas["Local_under_0.5"],
         "Visitante Over 0.5 %": prob_tablas["Visitante_over_0.5"],
-        "Visitante Under 0.5 %": prob_tablas["Visitante_under_0.5"],
-        "Local Over 1.5 %": prob_tablas["Local_over_1.5"],
-        "Local Under 1.5 %": prob_tablas["Local_under_1.5"],
+        # "Visitante Under 0.5 %": prob_tablas["Visitante_under_0.5"],
+        # "Local Over 1.5 %": prob_tablas["Local_over_1.5"],
+        # "Local Under 1.5 %": prob_tablas["Local_under_1.5"],
         "Visitante Over 1.5 %": prob_tablas["Visitante_over_1.5"],
-        "Visitante Under 1.5 %": prob_tablas["Visitante_under_1.5"],
+        # "Visitante Under 1.5 %": prob_tablas["Visitante_under_1.5"],
 
         # ===== BTTS =====
-        "BTTS %": prob_tablas["BTTS"],
-        "NO BTTS %": prob_tablas["NO_BTTS"],
+        # "BTTS %": prob_tablas["BTTS"],
+        # "NO BTTS %": prob_tablas["NO_BTTS"],
 
         # ===== Goles en el 1T (Tabla 4) =====
         "Over 0.5 1T %": prob_tablas["Over_0.5_1T"],
-        "Under 0.5 1T %": prob_tablas["Under_0.5_1T"],
-        "Over 1.5 1T %": prob_tablas["Over_1.5_1T"],
-        "Under 1.5 1T %": prob_tablas["Under_1.5_1T"],
-        "Local Over 0.5 1T %": prob_tablas["Local_over_0.5_1T"],
-        "Local Under 0.5 1T %": prob_tablas["Local_under_0.5_1T"],
+        # "Under 0.5 1T %": prob_tablas["Under_0.5_1T"],
+        # "Over 1.5 1T %": prob_tablas["Over_1.5_1T"],
+        # "Under 1.5 1T %": prob_tablas["Under_1.5_1T"],
+        # "Local Over 0.5 1T %": prob_tablas["Local_over_0.5_1T"],
+        # "Local Under 0.5 1T %": prob_tablas["Local_under_0.5_1T"],
         "Visitante Over 0.5 1T %": prob_tablas["Visitante_over_0.5_1T"],
-        "Visitante Under 0.5 1T %": prob_tablas["Visitante_under_0.5_1T"],
+        # "Visitante Under 0.5 1T %": prob_tablas["Visitante_under_0.5_1T"],
     }
 
     st.session_state.lista_partidos.append(partido)
