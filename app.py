@@ -1050,7 +1050,8 @@ def resumen_ventana(df, col, n):
             "p25": 0.0,
             "p75": 0.0,
             "std": 0.0,
-            "cv": 0.0
+            "cv": 0.0,
+            "centro": 0.0
         }
 
     s = pd.to_numeric(df.tail(n)[col], errors="coerce").dropna()
@@ -1062,7 +1063,8 @@ def resumen_ventana(df, col, n):
             "p25": 0.0,
             "p75": 0.0,
             "std": 0.0,
-            "cv": 0.0
+            "cv": 0.0,
+            "centro": 0.0
         }
 
     media = float(s.mean())
@@ -1072,6 +1074,7 @@ def resumen_ventana(df, col, n):
     p75 = float(s.quantile(0.75))
     std = float(s.std(ddof=0)) if len(s) > 1 else 0.0
     cv = float(std / media) if media != 0 else 0.0
+    centro = (0.2 * media + 0.5 * media_winsor + 0.3 * mediana)
 
     return {
         "media": media,
@@ -1080,7 +1083,8 @@ def resumen_ventana(df, col, n):
         "p25": p25,
         "p75": p75,
         "std": std,
-        "cv": cv
+        "cv": cv,
+        "centro": centro
     }
     
 def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
@@ -1126,12 +1130,57 @@ def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
     }
 
 
-def etiqueta_confianza_por_cv(cv):
-    if cv <= 0.22:
+def etiqueta_confianza_remates(score):
+    if score >= 0.72:
         return "Alta"
-    if cv <= 0.35:
+    if score >= 0.56:
         return "Media"
     return "Baja"
+
+def score_confianza_remates(proyeccion, rango_bajo, rango_alto, own, opp, n_own, n_opp):
+    eps = 1e-6
+
+    cv_mix = 0.60 * own.get("cv", 0.0) + 0.40 * opp.get("cv", 0.0)
+
+    amp_rango = max(rango_alto - rango_bajo, 0.0)
+    amp_rel = amp_rango / max(proyeccion, eps)
+
+    c10_5_3_own = np.mean([
+        abs(own["r10"]["centro"] - own["r5"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
+        abs(own["r5"]["centro"] - own["r3"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
+        abs(own["r10"]["centro"] - own["r3"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
+    ])
+
+    c10_5_3_opp = np.mean([
+        abs(opp["r10"]["centro"] - opp["r5"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
+        abs(opp["r5"]["centro"] - opp["r3"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
+        abs(opp["r10"]["centro"] - opp["r3"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
+    ])
+
+    inconsistencia = 0.60 * c10_5_3_own + 0.40 * c10_5_3_opp
+
+    sample_penalty = 0.0
+    if n_own < 10:
+        sample_penalty += (10 - n_own) * 0.015
+    if n_opp < 10:
+        sample_penalty += (10 - n_opp) * 0.010
+
+    score = (
+        1.00
+        - 0.45 * cv_mix
+        - 0.30 * amp_rel
+        - 0.20 * inconsistencia
+        - sample_penalty
+    )
+
+    score = max(0.0, min(1.0, score))
+    return {
+        "score": score,
+        "cv_mix": cv_mix,
+        "amp_rel": amp_rel,
+        "inconsistencia": inconsistencia,
+        "sample_penalty": sample_penalty
+    }
 
 
 def proyectar_remates_robustos(
@@ -1179,6 +1228,16 @@ def proyectar_remates_robustos(
         rango_bajo = 0.92 * proy_final
     if rango_alto < proy_final:
         rango_alto = 1.08 * proy_final
+        
+    conf = score_confianza_remates(
+        proyeccion=proy_final,
+        rango_bajo=rango_bajo,
+        rango_alto=rango_alto,
+        own=own,
+        opp=opp,
+        n_own=min(len(df_equipo), 10),
+        n_opp=min(len(df_rival), 10),
+    )
 
     return {
         "proyeccion": proy_final,
@@ -1186,7 +1245,11 @@ def proyectar_remates_robustos(
         "centro_ataque": centro_ataque,
         "centro_rival": centro_rival,
         "cv": cv_mix,
-        "confianza": etiqueta_confianza_por_cv(cv_mix),
+        "confianza": etiqueta_confianza_remates(conf["score"]),
+        "confidence_score": conf["score"],
+        "amp_rel": conf["amp_rel"],
+        "inconsistencia": conf["inconsistencia"],
+        "sample_penalty": conf["sample_penalty"],
         "rango_bajo": max(rango_bajo, 0.01),
         "rango_alto": max(rango_alto, 0.01),
         "ataque": own,
@@ -1366,6 +1429,66 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
 
     Remates_att_local = max(remates_local_obj["proyeccion"], 0.01)
     Remates_att_vis = max(remates_vis_obj["proyeccion"], 0.01)
+    
+    def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
+        if df.empty or col not in df.columns:
+            return {
+                "linea": int(linea),
+                "muestra": 0,
+                "racha_actual": 0,
+                "hits_n": 0,
+                "pct_n": 0.0,
+                "racha_txt": "0 (0)",
+                "hits_txt": "0 (0)",
+                "pct_txt": "0.0% (0/0)"
+            }
+
+        s = pd.to_numeric(df[col], errors="coerce").dropna().tail(n)
+        partidos = len(s)
+
+        if partidos == 0:
+            return {
+                "linea": int(linea),
+                "muestra": 0,
+                "racha_actual": 0,
+                "hits_n": 0,
+                "pct_n": 0.0,
+                "racha_txt": "0 (0)",
+                "hits_txt": "0 (0)",
+                "pct_txt": "0.0% (0/0)"
+            }
+
+        if incluir_igual:
+            cumple = (s >= linea).astype(int)
+        else:
+            cumple = (s > linea).astype(int)
+
+        racha = 0
+        for v in reversed(cumple.tolist()):
+            if v == 1:
+                racha += 1
+            else:
+                break
+
+        hits = int(cumple.sum())
+        pct = float(hits / partidos * 100)
+
+        return {
+            "linea": int(linea),
+            "muestra": partidos,
+            "racha_actual": racha,
+            "hits_n": hits,
+            "pct_n": pct,
+            "racha_txt": f"{racha} ({partidos})",
+            "hits_txt": f"{hits} ({partidos})",
+            "pct_txt": f"{pct:.1f}% ({hits}/{partidos})"
+        }
+        
+    linea_rem_l = max(1, int(np.floor(Remates_att_local + 0.5)))
+    linea_rem_v = max(1, int(np.floor(Remates_att_vis + 0.5)))
+        
+    racha_rem_l = calcular_racha_supera_linea(df_local, "shots_favor", linea_rem_l, incluir_igual=True)
+    racha_rem_v = calcular_racha_supera_linea(df_visitante, "shots_favor", linea_rem_v, incluir_igual=True)
 
     # --- TIROS A PUERTA ESPERADOS (SoT) ---
     SoT_local = Remates_att_local * P_match_local
@@ -1421,7 +1544,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "Remates_cv_vis": remates_vis_obj["cv"],
         "Remates_confianza_local": remates_local_obj["confianza"],
         "Remates_confianza_vis": remates_vis_obj["confianza"],
-
+        
         "Remates_centro_ataque_local": remates_local_obj["centro_ataque"],
         "Remates_centro_rival_local": remates_local_obj["centro_rival"],
         "Remates_centro_ataque_vis": remates_vis_obj["centro_ataque"],
@@ -1459,7 +1582,22 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "liga_shots_local_fav": liga_shots_local_fav,
         "liga_shots_vis_fav": liga_shots_vis_fav,        
         "SoT_local": SoT_local,
-        "SoT_vis": SoT_vis
+        "SoT_vis": SoT_vis,
+        
+        "MuestraRematesL": racha_rem_l["muestra"],
+        "MuestraRematesV": racha_rem_v["muestra"],
+        "RachaSuperaRematesL": racha_rem_l["racha_actual"],
+        "RachaSuperaRematesV": racha_rem_v["racha_actual"],
+        "HitsSuperaRemates10L": racha_rem_l["hits_n"],
+        "HitsSuperaRemates10V": racha_rem_v["hits_n"],
+        "PctSuperaRemates10L": racha_rem_l["pct_n"],
+        "PctSuperaRemates10V": racha_rem_v["pct_n"],
+        "RachaSuperaRematesL_txt": racha_rem_l["racha_txt"],
+        "RachaSuperaRematesV_txt": racha_rem_v["racha_txt"],
+        "HitsSuperaRemates10L_txt": racha_rem_l["hits_txt"],
+        "HitsSuperaRemates10V_txt": racha_rem_v["hits_txt"],
+        "PctSuperaRemates10L_txt": racha_rem_l["pct_txt"],
+        "PctSuperaRemates10V_txt": racha_rem_v["pct_txt"],
     }
 
 def prob_over05_total_1t(lmbda_L1, lmbda_V1):
@@ -2664,6 +2802,13 @@ if equipo_local_nombre and equipo_visitante_nombre:
 
         prob_tablas["STD_Remates_L"] = round(metricas_avanzadas["shots_favor_local_blend_std"], 2)
         prob_tablas["STD_Remates_V"] = round(metricas_avanzadas["shots_favor_vis_blend_std"], 2)
+        
+        prob_tablas["Racha_Local"] = metricas_avanzadas["RachaSuperaRematesL_txt"]
+        prob_tablas["Racha_Visitante"] = metricas_avanzadas["RachaSuperaRematesV_txt"]
+        prob_tablas["Hits_Local_U10"] = metricas_avanzadas["HitsSuperaRemates10L_txt"]
+        prob_tablas["Hits_Visitante_U10"] = metricas_avanzadas["HitsSuperaRemates10V_txt"]
+        prob_tablas["Porc_Hits_L"] = metricas_avanzadas["PctSuperaRemates10L_txt"]
+        prob_tablas["Porc_Hits_V"] = metricas_avanzadas["PctSuperaRemates10V_txt"]
 
         # Peligrosidad y Fragilidad (mantener cálculo tradicional)
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))

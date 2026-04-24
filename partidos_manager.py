@@ -41,6 +41,12 @@ def agregar_partido_a_lista(
         "Rango Remates V": prob_tablas.get("Rango_Remates_V", "N/A"),
         "Confianza Remates L": prob_tablas.get("Confianza_Remates_L", "N/A"),
         "Confianza Remates V": prob_tablas.get("Confianza_Remates_V", "N/A"),
+        "Racha Remates L": prob_tablas.get("Racha_Local"),
+        "Racha Remates V": prob_tablas.get("Racha_Visitante"),
+        "Hits U10 Remates L": prob_tablas.get("Hits_Local_U10"),
+        "Hits U10 Remates V": prob_tablas.get("Hits_Visitante_U10"),
+        "% Hits L": prob_tablas.get("Porc_Hits_L"),
+        "% Hits V": prob_tablas.get("Porc_Hits_V"),
         
         "Indice Peligro L": prob_tablas["Peligrosidad_L"],
         "Indice Peligro V": prob_tablas["Peligrosidad_V"], 
