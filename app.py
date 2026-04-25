@@ -1017,10 +1017,12 @@ def poisson_prob_total_over_under(lambda_local, lambda_visitante, line, max_k):
     return poisson_prob_over_under(lmbda, line, max_k)
 
 def media_U(df, col, n):
-    df_n = df.tail(n)
-    if col in df_n.columns and not df_n.empty:
-        return df_n[col].mean()
-    return 0.0
+    if col not in df.columns or df.empty:
+        return 0.0
+    df_n = pd.to_numeric(df.tail(n)[col], errors="coerce").dropna()
+    if df_n.empty or len(df_n) < 2:
+        return 0.0
+    return float(df_n.mean())
 
 def winsorized_mean(series, lower_q=0.10, upper_q=0.90):
     s = pd.to_numeric(series, errors="coerce").dropna()
@@ -1038,7 +1040,7 @@ def coef_variacion(series):
     media = s.mean()
     if media == 0:
         return 0.0
-    std = s.std(ddof=0)
+    std = s.std(ddof=1)
     return float(std / media)
 
 def resumen_ventana(df, col, n):
@@ -1051,7 +1053,6 @@ def resumen_ventana(df, col, n):
             "p75": 0.0,
             "std": 0.0,
             "cv": 0.0,
-            "centro": 0.0
         }
 
     s = pd.to_numeric(df.tail(n)[col], errors="coerce").dropna()
@@ -1064,7 +1065,6 @@ def resumen_ventana(df, col, n):
             "p75": 0.0,
             "std": 0.0,
             "cv": 0.0,
-            "centro": 0.0
         }
 
     media = float(s.mean())
@@ -1072,9 +1072,8 @@ def resumen_ventana(df, col, n):
     mediana = float(s.median())
     p25 = float(s.quantile(0.25))
     p75 = float(s.quantile(0.75))
-    std = float(s.std(ddof=0)) if len(s) > 1 else 0.0
-    cv = float(std / media) if media != 0 else 0.0
-    centro = (0.2 * media + 0.5 * media_winsor + 0.3 * mediana)
+    std = float(s.std(ddof=1))
+    cv = coef_variacion(s)
 
     return {
         "media": media,
@@ -1083,8 +1082,7 @@ def resumen_ventana(df, col, n):
         "p25": p25,
         "p75": p75,
         "std": std,
-        "cv": cv,
-        "centro": centro
+        "cv": cv
     }
     
 def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
@@ -1107,7 +1105,7 @@ def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
     p25 = mix("p25")
     p75 = mix("p75")
     std = mix("std")
-    cv = mix("cv")
+    cv = r10.get("cv", 0.0)
 
     centro = (
         0.20 * media +
@@ -1146,15 +1144,15 @@ def score_confianza_remates(proyeccion, rango_bajo, rango_alto, own, opp, n_own,
     amp_rel = amp_rango / max(proyeccion, eps)
 
     c10_5_3_own = np.mean([
-        abs(own["r10"]["centro"] - own["r5"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
-        abs(own["r5"]["centro"] - own["r3"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
-        abs(own["r10"]["centro"] - own["r3"]["centro"]) / max(own["centro"], eps) if "centro" in own else 0.0,
+        abs(own["r10"].get("centro", 0) - own["r5"].get("centro", 0)) / max(own["centro"], eps),
+        abs(own["r5"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], eps),
+        abs(own["r10"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], eps),
     ])
 
     c10_5_3_opp = np.mean([
-        abs(opp["r10"]["centro"] - opp["r5"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
-        abs(opp["r5"]["centro"] - opp["r3"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
-        abs(opp["r10"]["centro"] - opp["r3"]["centro"]) / max(opp["centro"], eps) if "centro" in opp else 0.0,
+        abs(opp["r10"].get("centro", 0) - opp["r5"].get("centro", 0)) / max(opp["centro"], eps),
+        abs(opp["r5"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], eps),
+        abs(opp["r10"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], eps),
     ])
 
     inconsistencia = 0.60 * c10_5_3_own + 0.40 * c10_5_3_opp
@@ -1167,9 +1165,9 @@ def score_confianza_remates(proyeccion, rango_bajo, rango_alto, own, opp, n_own,
 
     score = (
         1.00
-        - 0.45 * cv_mix
-        - 0.30 * amp_rel
-        - 0.20 * inconsistencia
+        - 0.40 * cv_mix
+        - 0.20 * amp_rel
+        - 0.25 * inconsistencia
         - sample_penalty
     )
 
@@ -1189,45 +1187,55 @@ def proyectar_remates_robustos(
     media_liga_favor,
     media_liga_contra_rival,
     col_favor="shots_favor",
-    col_contra_rival="shots_contra"
+    col_contra_rival="shots_contra",
+    condicion=""
 ):
     own = blend_resumenes_10_5_3(df_equipo, col_favor)
     opp = blend_resumenes_10_5_3(df_rival, col_contra_rival)
 
     centro_ataque = own["centro"]
     centro_rival = opp["centro"]
+    
+    cv_mix = 0.60 * own["cv"] + 0.40 * opp["cv"]
 
     rel_ataque = centro_ataque / max(media_liga_favor, 1.0)
     rel_defensa = centro_rival / max(media_liga_contra_rival, 1.0)
     base_matchup = media_liga_favor * rel_ataque * rel_defensa
 
     proy_bruta = (
-        0.40 * base_matchup +
-        0.35 * centro_ataque +
-        0.20 * centro_rival +
-        0.05 * media_liga_favor
+        0.60 * base_matchup +
+        0.40 * centro_ataque 
     )
+    
+    momento = own["r3"].get("centro", 0) / max(own["r10"].get("centro", 1), 1.0)
+    ajuste_momento = 1.0 + (momento - 1.0) * 0.5
+    ajuste_momento = max(0.85, min(1.15, ajuste_momento))
+    peso_momento = max(0.0, 1.0 - cv_mix)
+    ajuste_momento_efectivo = 1.0 + (ajuste_momento - 1.0) * peso_momento
+    
+    c10_5_3_own = np.mean([
+        abs(own["r10"].get("centro", 0) - own["r5"].get("centro", 0)) / max(own["centro"], 1e-6),
+        abs(own["r5"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], 1e-6),
+        abs(own["r10"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], 1e-6),
+    ])
 
-    cv_mix = 0.60 * own["cv"] + 0.40 * opp["cv"]
-    factor_vol = max(0.85, min(1.02, 1 - 0.18 * cv_mix))
-    proy_final = max(proy_bruta * factor_vol, 0.01)
+    c10_5_3_opp = np.mean([
+        abs(opp["r10"].get("centro", 0) - opp["r5"].get("centro", 0)) / max(opp["centro"], 1e-6),
+        abs(opp["r5"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], 1e-6),
+        abs(opp["r10"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], 1e-6),
+    ])
 
-    rango_bajo = (
-        0.55 * own["p25"] +
-        0.30 * opp["p25"] +
-        0.15 * proy_final
-    )
+    inconsistencia = 0.60 * c10_5_3_own + 0.40 * c10_5_3_opp
+    factor_vol = max(0.88, min(1.12, 1 - 0.18 * cv_mix))
+    proy_final = max(proy_bruta * factor_vol * ajuste_momento_efectivo, 0.01)   
 
-    rango_alto = (
-        0.55 * own["p75"] +
-        0.30 * opp["p75"] +
-        0.15 * proy_final
-    )
-
-    if rango_bajo > proy_final:
-        rango_bajo = 0.92 * proy_final
-    if rango_alto < proy_final:
-        rango_alto = 1.08 * proy_final
+    base_margen = min(0.28, max(0.08, 0.55 * cv_mix + 0.45 * inconsistencia))
+    if condicion == "local":
+        margen = min(0.45, max(0.12, base_margen))
+    else:
+        margen = min(0.30, max(0.08, base_margen))
+    rango_bajo = max(0.01, proy_final * (1 - margen))
+    rango_alto = max(0.01, proy_final * (1 + margen))
         
     conf = score_confianza_remates(
         proyeccion=proy_final,
@@ -1415,7 +1423,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         media_liga_favor=liga_shots_local_fav,
         media_liga_contra_rival=liga_shots_vis_contra,
         col_favor="shots_favor",
-        col_contra_rival="shots_contra"
+        col_contra_rival="shots_contra", 
+        condicion="local"
     )
 
     remates_vis_obj = proyectar_remates_robustos(
@@ -1424,7 +1433,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         media_liga_favor=liga_shots_vis_fav,
         media_liga_contra_rival=liga_shots_local_contra,
         col_favor="shots_favor",
-        col_contra_rival="shots_contra"
+        col_contra_rival="shots_contra",
+        condicion="visitante"
     )
 
     Remates_att_local = max(remates_local_obj["proyeccion"], 0.01)
