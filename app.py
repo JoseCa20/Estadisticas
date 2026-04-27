@@ -1207,12 +1207,9 @@ def proyectar_remates_robustos(
         0.40 * centro_ataque 
     )
     
-    momento = own["r3"].get("centro", 0) / max(own["r10"].get("centro", 1), 1.0)
-    ajuste_momento = 1.0 + (momento - 1.0) * 0.5
-    ajuste_momento = max(0.85, min(1.15, ajuste_momento))
-    peso_momento = max(0.0, 1.0 - cv_mix)
-    ajuste_momento_efectivo = 1.0 + (ajuste_momento - 1.0) * peso_momento
-    
+    momento_own = own["r3"].get("centro", 1) / max(own["r10"].get("centro", 1), 1e-6)
+    momento_opp = opp["r3"].get("centro", 1) / max(opp["r10"].get("centro", 1), 1e-6)
+        
     c10_5_3_own = np.mean([
         abs(own["r10"].get("centro", 0) - own["r5"].get("centro", 0)) / max(own["centro"], 1e-6),
         abs(own["r5"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], 1e-6),
@@ -1227,25 +1224,35 @@ def proyectar_remates_robustos(
 
     inconsistencia = 0.60 * c10_5_3_own + 0.40 * c10_5_3_opp
     factor_vol = max(0.88, min(1.12, 1 - 0.18 * cv_mix))
-    proy_final = max(proy_bruta * factor_vol * ajuste_momento_efectivo, 0.01)   
+    proy_preliminar = max(proy_bruta * factor_vol, 0.01)   
 
     base_margen = min(0.28, max(0.08, 0.55 * cv_mix + 0.45 * inconsistencia))
     if condicion == "local":
         margen = min(0.45, max(0.12, base_margen))
     else:
         margen = min(0.30, max(0.08, base_margen))
-    rango_bajo = max(0.01, proy_final * (1 - margen))
-    rango_alto = max(0.01, proy_final * (1 + margen))
+        
+    rango_bajo_pre = max(0.01, proy_preliminar * (1 - margen))
+    rango_alto_pre = max(0.01, proy_preliminar * (1 + margen))
         
     conf = score_confianza_remates(
-        proyeccion=proy_final,
-        rango_bajo=rango_bajo,
-        rango_alto=rango_alto,
+        proyeccion=proy_preliminar,
+        rango_bajo=rango_bajo_pre,
+        rango_alto=rango_alto_pre,
         own=own,
         opp=opp,
         n_own=min(len(df_equipo), 10),
         n_opp=min(len(df_rival), 10),
     )
+    
+    boost = 1.0
+    if conf["score"] >= 0.72:
+        boost = 1.0 + (max(0, (momento_own + momento_opp) / 2 - 1)* 0.5)
+        boost = min(1.15, boost)  
+        
+    proy_final = proy_preliminar * boost
+    rango_bajo = max(0.01, proy_final * (1 - margen))
+    rango_alto = max(0.01, proy_final * (1 + margen))
 
     return {
         "proyeccion": proy_final,
@@ -1258,8 +1265,8 @@ def proyectar_remates_robustos(
         "amp_rel": conf["amp_rel"],
         "inconsistencia": conf["inconsistencia"],
         "sample_penalty": conf["sample_penalty"],
-        "rango_bajo": max(rango_bajo, 0.01),
-        "rango_alto": max(rango_alto, 0.01),
+        "rango_bajo": rango_bajo,
+        "rango_alto": rango_alto,
         "ataque": own,
         "rival": opp
     }
