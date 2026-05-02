@@ -1270,6 +1270,74 @@ def proyectar_remates_robustos(
         "ataque": own,
         "rival": opp
     }
+    
+def proyectar_remates_contra_robustos(
+    df_equipo,
+    df_rival,
+    media_liga_concedidos,
+    media_liga_rival_favor,
+    col_contra = "shots_contra",
+    col_favor_rival = "shots_favor",
+    condicion = ""
+):
+    own = blend_resumenes_10_5_3(df_equipo, col_contra)
+    opp = blend_resumenes_10_5_3(df_rival, col_favor_rival)
+    
+    centro_defensa = own["centro"]
+    centro_ataque_rival = opp["centro"]
+    
+    cv_mix = 0.60 * own["cv"] + 0.40 * opp["cv"]
+    
+    rel_defensa = centro_defensa / max(media_liga_concedidos, 1.0)
+    rel_ataque_rival = centro_ataque_rival / max(media_liga_rival_favor, 1.0)
+    
+    base_matchup = media_liga_concedidos * rel_defensa * rel_ataque_rival
+    
+    proy_bruta = (0.60 * base_matchup + 0.40 * centro_defensa)
+    
+    c10_5_3_own = np.mean([
+        abs(own["r10"].get("centro", 0) - own["r5"].get("centro", 0)) / max(own["centro"], 1e-6),
+        abs(own["r5"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], 1e-6),
+        abs(own["r10"].get("centro", 0) - own["r3"].get("centro", 0)) / max(own["centro"], 1e-6),
+    ])
+    c10_5_3_opp = np.mean([
+        abs(opp["r10"].get("centro", 0) - opp["r5"].get("centro", 0)) / max(opp["centro"], 1e-6),
+        abs(opp["r5"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], 1e-6),
+        abs(opp["r10"].get("centro", 0) - opp["r3"].get("centro", 0)) / max(opp["centro"], 1e-6),
+    ])
+    
+    inconsistencia = 0.60 * c10_5_3_own + 0.40 * c10_5_3_opp
+    
+    factor_vol = max(0.88, min(1.12, 1 - 0.18 * cv_mix))
+    proy_preliminar = max(proy_bruta * factor_vol, 0.01)
+    
+    base_margen = min(0.28, max(0.08, 0.55 * cv_mix + 0.45 * inconsistencia))
+    margen = min(0.40, max(0.12, base_margen)) if condicion == "local" else min(0.30, max(0.08, base_margen))
+    
+    rango_bajo = max(0.01, proy_preliminar * (1 - margen))
+    rango_alto = max(0.01, proy_preliminar * (1 + margen))
+    
+    conf = score_confianza_remates(
+        proyeccion=proy_preliminar,
+        rango_bajo=rango_bajo,
+        rango_alto=rango_alto,
+        own=own,
+        opp = opp,
+        n_own= min(len(df_equipo), 10),
+        n_opp = min(len(df_rival), 10)
+    )    
+    
+    return {
+        "proyeccion": proy_preliminar,
+        "rango_bajo": rango_bajo,
+        "rango_alto": rango_alto,
+        "confianza": etiqueta_confianza_remates(conf["score"]),
+        "confidence_score": conf["score"],
+        "cv": cv_mix,
+        "defensa": own,
+        "rival": opp
+    }
+    
 
 def poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8):
     prob_local = prob_empate = prob_visitante = 0.0
@@ -1410,7 +1478,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
     P_match_local = (P_att_local + P_def_local) / 2.0
     P_match_vis = (P_att_vis + P_def_vis) / 2.0
 
-        # === REMATES ROBUSTOS: WINSOR, MEDIANA, PERCENTILES, STD, CV ===
+    # === REMATES ROBUSTOS: WINSOR, MEDIANA, PERCENTILES, STD, CV ===
     df_local_name = equipo_local_archivo
     df_visitante_name = equipo_visitante_archivo
 
@@ -1443,9 +1511,31 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         col_contra_rival="shots_contra",
         condicion="visitante"
     )
+    
+    remates_local_contra = proyectar_remates_contra_robustos(
+        df_equipo = df_local,
+        df_rival = df_visitante,
+        media_liga_concedidos = liga_shots_local_contra,
+        media_liga_rival_favor = liga_shots_vis_fav,
+        col_contra = "shots_contra",
+        col_favor_rival = "shots_favor",
+        condicion = "local"
+    )
+    
+    remates_vis_contra = proyectar_remates_contra_robustos(
+        df_equipo = df_visitante,
+        df_rival = df_local,
+        media_liga_concedidos = liga_shots_vis_contra,
+        media_liga_rival_favor = liga_shots_local_fav,
+        col_contra = "shots_contra",
+        col_favor_rival = "shots_favor",
+        condicion = "visitante"
+    )
 
     Remates_att_local = max(remates_local_obj["proyeccion"], 0.01)
     Remates_att_vis = max(remates_vis_obj["proyeccion"], 0.01)
+    Remates_contra_local = max(remates_local_contra["proyeccion"], 0.01)
+    Remates_contra_vis = max(remates_vis_contra["proyeccion"], 0.01)
     
     def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
         if df.empty or col not in df.columns:
@@ -1549,6 +1639,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "P_match_vis": P_match_vis,
         "Remates_att_local": Remates_att_local,
         "Remates_att_vis": Remates_att_vis,
+        "Remates_contra_local": Remates_contra_local,
+        "Remates_contra_vis": Remates_contra_vis,
         "Remates_base_matchup_local": remates_local_obj["base_matchup"],
         "Remates_base_matchup_vis": remates_vis_obj["base_matchup"],
 
@@ -2771,19 +2863,19 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Remates_favor_L"] = round(metricas_avanzadas["Remates_att_local"], 1)
         prob_tablas["Remates_favor_V"] = round(metricas_avanzadas["Remates_att_vis"], 1)
         
-        # Remates contra (mantener cálculo tradicional por ahora)
-        rem_3_l = calcular_remates_totales_contra(df_local_all.tail(3))
-        rem_5_l = calcular_remates_totales_contra(df_local_all.tail(5))
-        rem_tot_l = calcular_remates_totales_contra(df_local_all)
-        val_remates_contra_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
+        # # Remates contra (mantener cálculo tradicional por ahora)
+        # rem_3_l = calcular_remates_totales_contra(df_local_all.tail(3))
+        # rem_5_l = calcular_remates_totales_contra(df_local_all.tail(5))
+        # rem_tot_l = calcular_remates_totales_contra(df_local_all)
+        # val_remates_contra_local = (rem_3_l * 0.20) + (rem_5_l * 0.30) + (rem_tot_l * 0.50)
         
-        rem_3_v = calcular_remates_totales_contra(df_visitante_all.tail(3))
-        rem_5_v = calcular_remates_totales_contra(df_visitante_all.tail(5))
-        rem_tot_v = calcular_remates_totales_contra(df_visitante_all)
-        val_remates_contra_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
+        # rem_3_v = calcular_remates_totales_contra(df_visitante_all.tail(3))
+        # rem_5_v = calcular_remates_totales_contra(df_visitante_all.tail(5))
+        # rem_tot_v = calcular_remates_totales_contra(df_visitante_all)
+        # val_remates_contra_visitante = (rem_3_v * 0.20) + (rem_5_v * 0.30) + (rem_tot_v * 0.50)
         
-        prob_tablas["Remates_contra_L"] = round(val_remates_contra_local, 1)
-        prob_tablas["Remates_contra_V"] = round(val_remates_contra_visitante, 1)
+        prob_tablas["Remates_contra_L"] = round(metricas_avanzadas["Remates_contra_local"], 1)
+        prob_tablas["Remates_contra_V"] = round(metricas_avanzadas["Remates_contra_vis"], 1)
 
         # Medias de liga
         prob_tablas["Liga_Local_Fav"] = round(metricas_avanzadas["liga_shots_local_fav"], 1)
