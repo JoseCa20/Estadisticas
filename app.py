@@ -1127,14 +1127,6 @@ def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
         "r3": r3
     }
 
-
-def etiqueta_confianza_remates(score):
-    if score >= 0.72:
-        return "Alta"
-    if score >= 0.56:
-        return "Media"
-    return "Baja"
-
 def score_confianza_remates(proyeccion, rango_bajo, rango_alto, own, opp, n_own, n_opp):
     eps = 1e-6
 
@@ -1260,7 +1252,7 @@ def proyectar_remates_robustos(
         "centro_ataque": centro_ataque,
         "centro_rival": centro_rival,
         "cv": cv_mix,
-        "confianza": etiqueta_confianza_remates(conf["score"]),
+        "confianza": f"{100.0 * conf["score"]:.1f}%",
         "confidence_score": conf["score"],
         "amp_rel": conf["amp_rel"],
         "inconsistencia": conf["inconsistencia"],
@@ -1331,7 +1323,7 @@ def proyectar_remates_contra_robustos(
         "proyeccion": proy_preliminar,
         "rango_bajo": rango_bajo,
         "rango_alto": rango_alto,
-        "confianza": etiqueta_confianza_remates(conf["score"]),
+        "confianza": f"{100.0 * conf["score"]:.1f}%",
         "confidence_score": conf["score"],
         "cv": cv_mix,
         "defensa": own,
@@ -1547,7 +1539,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
                 "pct_n": 0.0,
                 "racha_txt": "0 (0)",
                 "hits_txt": "0 (0)",
-                "pct_txt": "0.0% (0/0)"
+                "pct": "0.0%"
             }
 
         s = pd.to_numeric(df[col], errors="coerce").dropna().tail(n)
@@ -1562,7 +1554,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
                 "pct_n": 0.0,
                 "racha_txt": "0 (0)",
                 "hits_txt": "0 (0)",
-                "pct_txt": "0.0% (0/0)"
+                "pct": "0.0%"
             }
 
         if incluir_igual:
@@ -1588,7 +1580,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
             "pct_n": pct,
             "racha_txt": f"{racha} ({partidos})",
             "hits_txt": f"{hits} ({partidos})",
-            "pct_txt": f"{pct:.1f}% ({hits}/{partidos})"
+            "pct": f"{pct:.1f}%"
         }
         
     linea_rem_l = max(1, int(np.floor(Remates_att_local + 0.5)))
@@ -1648,11 +1640,19 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "Remates_rango_local_high": remates_local_obj["rango_alto"],
         "Remates_rango_vis_low": remates_vis_obj["rango_bajo"],
         "Remates_rango_vis_high": remates_vis_obj["rango_alto"],
+        
+        "Remates_rango_local_contra_low": remates_local_contra["rango_bajo"],
+        "Remates_rango_local_contra_high": remates_local_contra["rango_alto"],
+        "Remates_rango_vis_contra_low": remates_vis_contra["rango_bajo"],
+        "Remates_rango_vis_contra_high": remates_vis_contra["rango_alto"],
 
         "Remates_cv_local": remates_local_obj["cv"],
         "Remates_cv_vis": remates_vis_obj["cv"],
+        
         "Remates_confianza_local": remates_local_obj["confianza"],
-        "Remates_confianza_vis": remates_vis_obj["confianza"],
+        "Remates_confianza_vis": remates_vis_obj["confianza"],        
+        "Remates_confianza_local_contra": remates_local_contra["confianza"],
+        "Remates_confianza_vis_contra": remates_vis_contra["confianza"],
         
         "Remates_centro_ataque_local": remates_local_obj["centro_ataque"],
         "Remates_centro_rival_local": remates_local_obj["centro_rival"],
@@ -1705,8 +1705,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "RachaSuperaRematesV_txt": racha_rem_v["racha_txt"],
         "HitsSuperaRemates10L_txt": racha_rem_l["hits_txt"],
         "HitsSuperaRemates10V_txt": racha_rem_v["hits_txt"],
-        "PctSuperaRemates10L_txt": racha_rem_l["pct_txt"],
-        "PctSuperaRemates10V_txt": racha_rem_v["pct_txt"],
+        "PctSuperaRemates10L_txt": racha_rem_l["pct"],
+        "PctSuperaRemates10V_txt": racha_rem_v["pct"],
     }
 
 def prob_over05_total_1t(lmbda_L1, lmbda_V1):
@@ -2882,17 +2882,40 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Liga_Vis_Fav"] = round(metricas_avanzadas["liga_shots_vis_fav"], 1)
 
         # === MÉTRICAS ROBUSTAS CORREGIDAS ===
-        prob_tablas["Rango_Remates_L"] = (
+        prob_tablas["Rango_Remates_favor_L"] = (
             f"{metricas_avanzadas['Remates_rango_local_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_local_high']:.1f}"
         )
-        prob_tablas["Rango_Remates_V"] = (
+        prob_tablas["Amplitud_rango_favor_L"] = (
+            f"{metricas_avanzadas['Remates_rango_local_high'] - metricas_avanzadas['Remates_rango_local_low']:.1f}"
+        )        
+        prob_tablas["Rango_Remates_favor_V"] = (
             f"{metricas_avanzadas['Remates_rango_vis_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_vis_high']:.1f}"
+        )
+        prob_tablas["Amplitud_rango_favor_V"] = (
+            f"{metricas_avanzadas['Remates_rango_vis_high'] - metricas_avanzadas['Remates_rango_vis_low']:.1f}"
+        )
+        
+        prob_tablas["Rango_Remates_contra_L"] = (
+            f"{metricas_avanzadas['Remates_rango_local_contra_low']:.1f}-"
+            f"{metricas_avanzadas['Remates_rango_local_contra_high']:.1f}"
+        )
+        prob_tablas["Amplitud_rango_contra_L"] = (
+            f"{metricas_avanzadas['Remates_rango_local_contra_high'] - metricas_avanzadas['Remates_rango_local_contra_low']:.1f}"
+        )        
+        prob_tablas["Rango_Remates_contra_V"] = (
+            f"{metricas_avanzadas['Remates_rango_vis_contra_low']:.1f}-"
+            f"{metricas_avanzadas['Remates_rango_vis_contra_high']:.1f}"
+        )
+        prob_tablas["Amplitud_rango_contra_V"] = (
+            f"{metricas_avanzadas['Remates_rango_vis_contra_high'] - metricas_avanzadas['Remates_rango_vis_contra_low']:.1f}"
         )
 
         prob_tablas["Confianza_Remates_L"] = metricas_avanzadas["Remates_confianza_local"]
         prob_tablas["Confianza_Remates_V"] = metricas_avanzadas["Remates_confianza_vis"]
+        prob_tablas["Confianza_Remates_contra_L"] = metricas_avanzadas["Remates_confianza_local_contra"]
+        prob_tablas["Confianza_Remates_contra_V"] = metricas_avanzadas["Remates_confianza_vis_contra"]
 
         prob_tablas["CV_Remates_L"] = round(metricas_avanzadas["Remates_cv_local"], 3)
         prob_tablas["CV_Remates_V"] = round(metricas_avanzadas["Remates_cv_vis"], 3)
