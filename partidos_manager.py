@@ -39,18 +39,19 @@ def agregar_partido_a_lista(
         "Remates Contra V": prob_tablas["Remates_contra_V"],
         
         "Confianza Remates L": prob_tablas.get("Confianza_Remates_L", "N/A"),
-        "Rango Remates L": prob_tablas.get("Rango_Remates_favor_L", "N/A"),
-        "Amplitud Remates L": prob_tablas.get("Amplitud_rango_favor_L", "N/A"), 
-        
         "Confianza Remates V": prob_tablas.get("Confianza_Remates_V", "N/A"),
-        "Rango Remates V": prob_tablas.get("Rango_Remates_favor_V", "N/A"),
-        "Amplitud Remates V": prob_tablas.get("Amplitud_rango_favor_V", "N/A"),
-        
         "Confianza Remates Contra L": prob_tablas.get("Confianza_Remates_contra_L", "N/A"),
-        "Rango Remates Contra L": prob_tablas.get("Rango_Remates_contra_L", "N/A"),
-        "Amplitud Remates Contra L": prob_tablas.get("Amplitud_rango_contra_L", "N/A"),
-                
         "Confianza Remates Contra V": prob_tablas.get("Confianza_Remates_contra_V", "N/A"),
+        
+        "Rango Remates L": prob_tablas.get("Rango_Remates_favor_L", "N/A"),
+        "Amplitud Remates L": prob_tablas.get("Amplitud_rango_favor_L", "N/A"),         
+        
+        "Rango Remates V": prob_tablas.get("Rango_Remates_favor_V", "N/A"),
+        "Amplitud Remates V": prob_tablas.get("Amplitud_rango_favor_V", "N/A"),        
+        
+        "Rango Remates Contra L": prob_tablas.get("Rango_Remates_contra_L", "N/A"),
+        "Amplitud Remates Contra L": prob_tablas.get("Amplitud_rango_contra_L", "N/A"),                
+        
         "Rango Remates Contra V": prob_tablas.get("Rango_Remates_contra_V", "N/A"),
         "Amplitud Remates Contra V": prob_tablas.get("Amplitud_rango_contra_V", "N/A"), 
         

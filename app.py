@@ -30,7 +30,7 @@ mapa_equipos = {
 "aarhus": "aarhus",
 "aberdeen-fc": "aberdeen",
 "ac-milan": "ac milan",
-"ac-oulu": "gnistan",
+"ac-oulu": "oulu",
 "ac-pisa-1909": "pisa",
 "acf-fiorentina": "fiorentina",
 "ad-ceuta-fc": "ceuta",
@@ -47,6 +47,7 @@ mapa_equipos = {
 "al-ahli-saudi-fc": "al-ahli",
 "al-ahly-sc": "al ahly",
 "al-ettifaq-fc": "al-ettifaq",
+"al-fateh-sc": "al fateh",
 "al-fayha-fc": "al fayha",
 "al-hazem-fc": "al hazem",
 "al-hilal-fc": "al-hilal",
@@ -57,6 +58,7 @@ mapa_equipos = {
 "al-najma-sc": "al najma",
 "al-nassr-fc": "al-nassr",
 "al-okhdood-club": "al okhdood",
+"al-qadsiah-fc": "al qadsiah",
 "al-riyadh-sc": "al riyadh",
 "al-shabab-fc": "al-shabab",
 "al-taawoun-fc": "al-taawon",
@@ -117,7 +119,7 @@ mapa_equipos = {
 "bristol-city-fc": "bristol city",
 "brondby": "brondby",
 "bruk-bet-termalica-nieciecza": "termalica b-b.",
-"bryne-fk": "kongsvinger",
+"bryne-fk": "bryne",
 "bsc-young-boys": "young boys",
 "burgos-cf": "burgos cf",
 "burnley-fc": "burnley",
@@ -233,7 +235,7 @@ mapa_equipos = {
 "derby-county-fc": "derby",
 "derry-city-fc": "derry city",
 "dinamo-zagreb": "din. zagreb",
-"djurgardens-if": "gais",
+"djurgardens-if": "djurgarden",
 "drogheda-united-fc": "drogheda",
 "dundalk-fc": "dundalk",
 "dundee-fc": "dundee fc",
@@ -278,7 +280,7 @@ mapa_equipos = {
 "fc-juarez": "juarez",
 "fc-kaiserslautern": "kaiserslautern",
 "fc-koln": "fc koln",
-"fc-lahti": "jaro",
+"fc-lahti": "lahti",
 "fc-lausanne-sport": "lausanne",
 "fc-lorient": "lorient",
 "fc-lugano": "lugano",
@@ -311,9 +313,9 @@ mapa_equipos = {
 "fcv-dender-eh": "dender",
 "feyenoord-rotterdam": "feyenoord",
 "ff-jaro": "jaro",
-"fk-bodo-glimt": "kristiansund",
+"fk-bodo-glimt": "bodo/glimt",
 "fk-dukla-prague": "dukla prague",
-"fk-haugesund": "lyn",
+"fk-haugesund": "haugesund",
 "fk-jablonec": "jablonec",
 "fk-miercurea-ciuc": "csikszereda m. ciuc",
 "fk-mlada-boleslav": "mlada boleslav",
@@ -335,7 +337,6 @@ mapa_equipos = {
 "girona-fc": "girona",
 "gks-katowice": "katowice",
 "go-ahead-eagles": "g.a. eagles",
-"godoy-cruz": "godoy cruz",
 "gorica": "gorica",
 "gornik-zabrze": "gornik zabrze",
 "granada-cf": "granada",
@@ -345,7 +346,7 @@ mapa_equipos = {
 "greuther-furth": "furth",
 "guayaquil-city-fc": "guayaquil city",
 "hajduk-split": "hajduk split",
-"halmstads-bk": "aik stockholm",
+"halmstads-bk": "halmstad",
 "ham-kam": "hamkam",
 "hamburger-sv": "hamburger sv",
 "hammarby-if": "hammarby",
@@ -362,12 +363,12 @@ mapa_equipos = {
 "holstein-kiel": "kiel",
 "houston-dynamo": "houston dynamo",
 "hull-city-fc": "hull",
-"if-brommapojkarna": "hacken",
+"if-brommapojkarna": "brommapojkarna",
 "if-elfsborg": "elfsborg",
 "if-gnistan": "gnistan",
-"ifk-goteborg": "elfsborg",
+"ifk-goteborg": "goteborg",
 "ifk-mariehamn": "mariehamn",
-"ik-sirius": "degerfors",
+"ik-sirius": "sirius",
 "independiente-santa-fe": "santa fe",
 "instituto-atletico-central-cordoba": "instituto",
 "inter-miami-cf": "inter miami",
@@ -388,7 +389,7 @@ mapa_equipos = {
 "korona-kielce": "korona",
 "krc-genk": "genk",
 "kristiansund-bk": "kristiansund",
-"kuopion-palloseura": "ilves",
+"kuopion-palloseura": "kups",
 "kv-mechelen": "kv mechelen",
 "kvc-westerlo": "westerlo",
 "lask": "lask",
@@ -414,7 +415,7 @@ mapa_equipos = {
 "macarthur-fc": "macarthur fc",
 "mainz-05": "mainz",
 "malaga-cf": "malaga",
-"malmo-ff": "orgryte",
+"malmo-ff": "malmo ff",
 "manchester-city-fc": "man city",
 "manchester-united-fc": "man utd",
 "manta-fc": "manta",
@@ -427,7 +428,7 @@ mapa_equipos = {
 "millwall-fc": "millwall",
 "minnesota-united-fc": "minnesota",
 "mirassol-fc": "mirassol",
-"mjallby-aif": "hammarby",
+"mjallby-aif": "mjallby",
 "mks-pogon-szczecin": "pogon szczecin",
 "modern-sport-fc": "modern sport",
 "molde-fk": "molde",
@@ -519,7 +520,6 @@ mapa_equipos = {
 "san-diego-fc": "san diego fc",
 "san-jose-earthquakes": "san jose earthquakes",
 "san-lorenzo-de-almagro": "san lorenzo",
-"san-martin-de-san-juan": "san martin s.j.",
 "sandefjord-fotball": "sandefjord",
 "santa-clara": "santa clara",
 "santos-fc": "santos",
@@ -544,7 +544,7 @@ mapa_equipos = {
 "shelbourne-fc": "shelbourne",
 "silkeborg-if": "silkeborg",
 "sint-truidense-vv": "st. truiden",
-"sjk": "hjk",
+"sjk": "sjk",
 "sk-brann": "brann",
 "sk-sigma-olomouc": "sigma olomouc",
 "slaven-belupo": "slaven belupo",
@@ -588,7 +588,7 @@ mapa_equipos = {
 "toronto-fc": "toronto fc",
 "tottenham-hotspur-fc": "tottenham",
 "toulouse-fc": "toulouse",
-"tps-turku": "mariehamn",
+"tps-turku": "tps turku",
 "tromso-il": "tromso",
 "tsv-hartberg": "hartberg",
 "ud-almeria": "almeria",
@@ -601,12 +601,12 @@ mapa_equipos = {
 "us-cremonese": "cremonese",
 "us-lecce": "lecce",
 "us-sassuolo-calcio": "sassuolo",
-"vaasan-palloseura": "inter turku",
+"vaasan-palloseura": "vps",
 "valencia-cf": "valencia",
 "valerenga-fotball": "valerenga",
 "vancouver-whitecaps-fc": "vancouver whitecaps",
 "varazdin": "varazdin",
-"vasteras-sk": "kalmar",
+"vasteras-sk": "vasteras sk",
 "vejle-bk": "vejle",
 "vfb-stuttgart": "stuttgart",
 "vfl-bochum": "bochum",
@@ -631,9 +631,7 @@ mapa_equipos = {
 "wsg-swarovski-tirol": "tirol",
 "zaglebie-lubin": "zaglebie",
 "zamalek-sc": "zamalek",
-"zed-fc": "zed",
-"al-fateh-sc": "al fateh",
-"al-qadsiah-fc": "al qadsiah"
+"zed-fc": "zed"
 }
 
 # === CARGAR DATOS DEL EQUIPO ===
@@ -1226,6 +1224,7 @@ def proyectar_remates_robustos(
         
     rango_bajo_pre = max(0.01, proy_preliminar * (1 - margen))
     rango_alto_pre = max(0.01, proy_preliminar * (1 + margen))
+    print(rango_bajo_pre)
         
     conf = score_confianza_remates(
         proyeccion=proy_preliminar,
@@ -1252,7 +1251,7 @@ def proyectar_remates_robustos(
         "centro_ataque": centro_ataque,
         "centro_rival": centro_rival,
         "cv": cv_mix,
-        "confianza": f"{100.0 * conf["score"]:.1f}%",
+        "confianza": round(100 * conf["score"], 1),
         "confidence_score": conf["score"],
         "amp_rel": conf["amp_rel"],
         "inconsistencia": conf["inconsistencia"],
@@ -1323,7 +1322,7 @@ def proyectar_remates_contra_robustos(
         "proyeccion": proy_preliminar,
         "rango_bajo": rango_bajo,
         "rango_alto": rango_alto,
-        "confianza": f"{100.0 * conf["score"]:.1f}%",
+        "confianza": round(100 * conf["score"], 1),
         "confidence_score": conf["score"],
         "cv": cv_mix,
         "defensa": own,
@@ -2885,31 +2884,31 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Rango_Remates_favor_L"] = (
             f"{metricas_avanzadas['Remates_rango_local_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_local_high']:.1f}"
+        ).replace(".", ",")
+        prob_tablas["Amplitud_rango_favor_L"] = round(
+            metricas_avanzadas['Remates_rango_local_high'] - metricas_avanzadas['Remates_rango_local_low'], 1
         )
-        prob_tablas["Amplitud_rango_favor_L"] = (
-            f"{metricas_avanzadas['Remates_rango_local_high'] - metricas_avanzadas['Remates_rango_local_low']:.1f}"
-        )        
         prob_tablas["Rango_Remates_favor_V"] = (
             f"{metricas_avanzadas['Remates_rango_vis_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_vis_high']:.1f}"
-        )
-        prob_tablas["Amplitud_rango_favor_V"] = (
-            f"{metricas_avanzadas['Remates_rango_vis_high'] - metricas_avanzadas['Remates_rango_vis_low']:.1f}"
+        ).replace(".", ",")
+        prob_tablas["Amplitud_rango_favor_V"] = round(
+            metricas_avanzadas['Remates_rango_vis_high'] - metricas_avanzadas['Remates_rango_vis_low'], 1
         )
         
         prob_tablas["Rango_Remates_contra_L"] = (
             f"{metricas_avanzadas['Remates_rango_local_contra_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_local_contra_high']:.1f}"
-        )
-        prob_tablas["Amplitud_rango_contra_L"] = (
-            f"{metricas_avanzadas['Remates_rango_local_contra_high'] - metricas_avanzadas['Remates_rango_local_contra_low']:.1f}"
-        )        
+        ).replace(".", ",")
+        prob_tablas["Amplitud_rango_contra_L"] = round(
+            metricas_avanzadas['Remates_rango_local_contra_high'] - metricas_avanzadas['Remates_rango_local_contra_low'], 1
+        )     
         prob_tablas["Rango_Remates_contra_V"] = (
             f"{metricas_avanzadas['Remates_rango_vis_contra_low']:.1f}-"
             f"{metricas_avanzadas['Remates_rango_vis_contra_high']:.1f}"
-        )
-        prob_tablas["Amplitud_rango_contra_V"] = (
-            f"{metricas_avanzadas['Remates_rango_vis_contra_high'] - metricas_avanzadas['Remates_rango_vis_contra_low']:.1f}"
+        ).replace(".", ",")
+        prob_tablas["Amplitud_rango_contra_V"] = round(
+            metricas_avanzadas['Remates_rango_vis_contra_high'] - metricas_avanzadas['Remates_rango_vis_contra_low'], 1
         )
 
         prob_tablas["Confianza_Remates_L"] = metricas_avanzadas["Remates_confianza_local"]
