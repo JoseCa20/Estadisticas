@@ -975,15 +975,23 @@ def calcular_probabilidad_over_equipo(lmbda, threshold):
     return round(prob * 100, 1)
 
 # === AUXILIARES PARA MÉTRICAS AVANZADAS ===
-def media_ultimos(df, col, n):
-    if col not in df.columns or df.empty:
-        return 0.0
-    return float(df[col].tail(n).mean())
+def media_ultimos(df, col, n, min_obs=1, default=0.0):
+    if df is None or df.empty:
+        return float(default)
+
+    if col not in df.columns:
+        return float(default)
+
+    s = pd.to_numeric(df[col].tail(n), errors="coerce").dropna()
+    if len(s) < min_obs:
+        return float(default)
+
+    return float(s.mean())
 
 def blend_10_5_3(df, col):
-    m10 = media_ultimos(df, col, 10)
-    m5 = media_ultimos(df, col, 5)
-    m3 = media_ultimos(df, col, 3)
+    m10 = media_U(df, col, 10)
+    m5 = media_U(df, col, 5)
+    m3 = media_U(df, col, 3)
     return 0.5 * m10 + 0.3 * m5 + 0.2 * m3
 
 def calcular_q_p(df, shots_col, sot_col, xg_col, n=5):
@@ -1033,7 +1041,7 @@ def winsorized_mean(series, lower_q=0.10, upper_q=0.90):
 
 def coef_variacion(series):
     s = pd.to_numeric(series, errors="coerce").dropna()
-    if s.empty:
+    if len(s) < 2:
         return 0.0
     media = s.mean()
     if media == 0:
@@ -1050,7 +1058,8 @@ def resumen_ventana(df, col, n):
             "p25": 0.0,
             "p75": 0.0,
             "std": 0.0,
-            "cv": 0.0,
+            "cv": 0.0, 
+            "centro": 0.0
         }
 
     s = pd.to_numeric(df.tail(n)[col], errors="coerce").dropna()
@@ -1063,6 +1072,7 @@ def resumen_ventana(df, col, n):
             "p75": 0.0,
             "std": 0.0,
             "cv": 0.0,
+            "centro": 0.0
         }
 
     media = float(s.mean())
@@ -1070,8 +1080,10 @@ def resumen_ventana(df, col, n):
     mediana = float(s.median())
     p25 = float(s.quantile(0.25))
     p75 = float(s.quantile(0.75))
-    std = float(s.std(ddof=1))
+    std = float(s.std(ddof=1)) if len(s) > 1 else 0.0
     cv = coef_variacion(s)
+    
+    centro = 0.20 * media + 0.50 * media_winsor + 0.30 * mediana
 
     return {
         "media": media,
@@ -1080,7 +1092,8 @@ def resumen_ventana(df, col, n):
         "p25": p25,
         "p75": p75,
         "std": std,
-        "cv": cv
+        "cv": cv,
+        "centro": centro
     }
     
 def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
@@ -1103,7 +1116,7 @@ def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
     p25 = mix("p25")
     p75 = mix("p75")
     std = mix("std")
-    cv = r10.get("cv", 0.0)
+    cv = mix("cv")
 
     centro = (
         0.20 * media +
@@ -1224,7 +1237,6 @@ def proyectar_remates_robustos(
         
     rango_bajo_pre = max(0.01, proy_preliminar * (1 - margen))
     rango_alto_pre = max(0.01, proy_preliminar * (1 + margen))
-    print(rango_bajo_pre)
         
     conf = score_confianza_remates(
         proyeccion=proy_preliminar,
@@ -1522,11 +1534,32 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         col_favor_rival = "shots_favor",
         condicion = "visitante"
     )
+    
+    eps = 1e-6
+    xg_shot_local = xGF_local / max(remates_local_obj["centro_ataque"], eps)
+    xg_shot_vis = xGF_vis / max(remates_vis_obj["centro_ataque"], eps)
 
-    Remates_att_local = max(remates_local_obj["proyeccion"], 0.01)
-    Remates_att_vis = max(remates_vis_obj["proyeccion"], 0.01)
-    Remates_contra_local = max(remates_local_contra["proyeccion"], 0.01)
-    Remates_contra_vis = max(remates_vis_contra["proyeccion"], 0.01)
+    def cap_factor_xg(x):
+        f = np.sqrt(max(x, 0.0))
+        return max(0.95, min(1.05, f))
+
+    F_xg_local = cap_factor_xg(xg_shot_local)
+    F_xg_vis = cap_factor_xg(xg_shot_vis)
+    
+    xga_shot_local = xGC_local / max(remates_local_contra["defensa"]["centro"], eps)
+    xga_shot_vis = xGC_vis / max(remates_vis_contra["defensa"]["centro"], eps)
+
+    def cap_factor_xga(x):
+        f = np.sqrt(max(x, 0.0))
+        return max(0.97, min(1.03, f))
+
+    F_xga_local = cap_factor_xga(xga_shot_local)
+    F_xga_vis = cap_factor_xga(xga_shot_vis)    
+
+    Remates_att_local = max(remates_local_obj["proyeccion"] * F_xg_local, 0.01)
+    Remates_att_vis = max(remates_vis_obj["proyeccion"] * F_xg_vis, 0.01)
+    Remates_contra_local = max(remates_local_contra["proyeccion"] * F_xga_local, 0.01)
+    Remates_contra_vis = max(remates_vis_contra["proyeccion"] * F_xga_vis, 0.01)
     
     def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
         if df.empty or col not in df.columns:
