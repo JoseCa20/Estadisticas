@@ -1737,8 +1737,8 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "RachaSuperaRematesV_txt": racha_rem_v["racha_txt"],
         "HitsSuperaRemates10L_txt": racha_rem_l["hits_txt"],
         "HitsSuperaRemates10V_txt": racha_rem_v["hits_txt"],
-        "PctSuperaRemates10L_txt": racha_rem_l["pct"],
-        "PctSuperaRemates10V_txt": racha_rem_v["pct"],
+        "PctSuperaRemates10L_txt": racha_rem_l["pct_n"],
+        "PctSuperaRemates10V_txt": racha_rem_v["pct_n"],
     }
 
 def prob_over05_total_1t(lmbda_L1, lmbda_V1):
