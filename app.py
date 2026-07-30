@@ -2566,6 +2566,19 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             else:
                 break
         return racha
+    
+    def calcular_racha_maxima_booleana(cond):
+        if cond is None:
+            return 0
+        racha_maxima = 0
+        racha_actual = 0
+        for valor in pd.Series(cond).fillna(False).astype(bool):
+            if valor:
+                racha_actual += 1
+                racha_maxima = max(racha_maxima, racha_actual)
+            else:
+                racha_actual = 0
+        return racha_maxima
 
 
     # Rachas para las medias de goles por tiempo
@@ -2604,6 +2617,22 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     over_1_5_ht_cond = (df_calculo[goles_ht_favor_col] + df_calculo[goles_ht_contra_col]) > 1.5
     over_1_5_ht = over_1_5_ht_cond.mean() * 100
     racha_over_1_5_ht = calcular_racha_booleana(df_calculo, over_1_5_ht_cond)
+    
+    # Nuevas métricas de gol
+    marca_gol_cond = df_calculo[goles_a_favor_col] >= 1
+    recibe_gol_cond = df_calculo[goles_en_contra_col] >= 1
+    no_marca_gol_cond = df_calculo[goles_a_favor_col] == 0
+    no_recibe_gol_cond = df_calculo[goles_en_contra_col] == 0
+
+    racha_marca_gol = calcular_racha_booleana(df_calculo, marca_gol_cond)
+    racha_recibe_gol = calcular_racha_booleana(df_calculo, recibe_gol_cond)
+    racha_no_marca_gol = calcular_racha_booleana(df_calculo, no_marca_gol_cond)
+    racha_no_recibe_gol = calcular_racha_booleana(df_calculo, no_recibe_gol_cond)
+
+    max_racha_marca_gol = calcular_racha_maxima_booleana(marca_gol_cond)
+    max_racha_recibe_gol = calcular_racha_maxima_booleana(recibe_gol_cond)
+    max_racha_no_marca_gol = calcular_racha_maxima_booleana(no_marca_gol_cond)
+    max_racha_no_recibe_gol = calcular_racha_maxima_booleana(no_recibe_gol_cond)
 
     return {
         "Estadística": [
@@ -2615,6 +2644,14 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Media Gol 2T Recibido",
             "Media xG",
             "Media xG Recibido",
+            "Marca Gol",
+            "Máx. Racha Marca Gol",
+            "Recibe Gol",
+            "Máx. Racha Recibe Gol",
+            "No Marca Gol",
+            "Máx. Racha No Marca",
+            "No Recibe Gol",
+            "Máx. Racha No Recibe",
             "BTTS",
             "Gol HT",
             "Over 1.5 HT",
@@ -2626,7 +2663,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             "Promedio Tiros a Puerta Contra"
         ],
 
-        # ======= ÚLTIMOS 10 PARTIDOS (YA EXISTENTE) =======
         f"{equipo_nombre} (10)": [
             media_gol,
             media_gol_recibido,
@@ -2636,6 +2672,14 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             media_gol_2t_recibido,
             media_xg_favor,
             media_xg_contra,
+            f"{marca_gol_cond.mean() * 100:.1f}%",
+            max_racha_marca_gol,
+            f"{recibe_gol_cond.mean() * 100:.1f}%",
+            max_racha_recibe_gol,
+            f"{no_marca_gol_cond.mean() * 100:.1f}%",
+            max_racha_no_marca_gol,
+            f"{no_recibe_gol_cond.mean() * 100:.1f}%",
+            max_racha_no_recibe_gol,
             f"{btts:.1f}%",
             f"{gol_ht:.1f}%",
             f"{over_1_5_ht:.1f}%",
@@ -2655,7 +2699,15 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_media_gol_2t,
             racha_media_gol_2t_recibido,
             racha_media_xg_favor,
-            racha_media_xg_contra,            
+            racha_media_xg_contra,
+            racha_marca_gol,
+            max_racha_marca_gol,
+            racha_recibe_gol,
+            max_racha_recibe_gol,
+            racha_no_marca_gol,
+            max_racha_no_marca_gol,
+            racha_no_recibe_gol,
+            max_racha_no_recibe_gol,
             racha_btts,
             racha_gol_ht,
             racha_over_1_5_ht,
@@ -2667,7 +2719,6 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             racha_prom_tiros_puerta_contra
         ],
 
-        # ======= ÚLTIMOS 5 PARTIDOS =======
         f"{equipo_nombre} (5)": [
             round(df5[goles_a_favor_col].mean(), 2),
             round(df5[goles_en_contra_col].mean(), 2),
@@ -2677,15 +2728,23 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             round(df5[goles_st_contra_col].mean(), 2),
             round(df5[xg_favor_col].mean(), 2),
             round(df5[xg_contra_col].mean(), 2),
-            f"{( ((df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)).mean()*100 ):.1f}%",
-            f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0).mean()*100:.1f}%",
-            f"{((df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
-            f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5).mean()*100:.1f}%",
-            f"{((df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5).mean()*100:.1f}%",
-            round(df5[remates_favor_col].mean(),1),
-            round(df5[remates_contra_col].mean(),1),
-            round(df5[a_puerta_favor_col].mean(),1),
-            round(df5[a_puerta_contra_col].mean(),1)
+            f"{(df5[goles_a_favor_col] >= 1).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df5[goles_a_favor_col] >= 1),
+            f"{(df5[goles_en_contra_col] >= 1).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df5[goles_en_contra_col] >= 1),
+            f"{(df5[goles_a_favor_col] == 0).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df5[goles_a_favor_col] == 0),
+            f"{(df5[goles_en_contra_col] == 0).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df5[goles_en_contra_col] == 0),
+            f"{(((df5[goles_a_favor_col] > 0) & (df5[goles_en_contra_col] > 0)).mean() * 100):.1f}%",
+            f"{((df5[goles_ht_favor_col] + df5[goles_ht_contra_col]) > 0).mean() * 100:.1f}%",
+            f"{((df5[goles_ht_favor_col] + df5[goles_ht_contra_col]) > 1.5).mean() * 100:.1f}%",
+            f"{((df5[goles_a_favor_col] + df5[goles_en_contra_col]) > 1.5).mean() * 100:.1f}%",
+            f"{((df5[goles_a_favor_col] + df5[goles_en_contra_col]) > 2.5).mean() * 100:.1f}%",
+            round(df5[remates_favor_col].mean(), 1),
+            round(df5[remates_contra_col].mean(), 1),
+            round(df5[a_puerta_favor_col].mean(), 1),
+            round(df5[a_puerta_contra_col].mean(), 1)
         ],
 
         "R5": [
@@ -2697,18 +2756,25 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha(df5, goles_st_contra_col, df5[goles_st_contra_col].mean()),
             calcular_racha(df5, xg_favor_col, df5[xg_favor_col].mean()),
             calcular_racha(df5, xg_contra_col, df5[xg_contra_col].mean()),
-            calcular_racha_booleana(df5, (df5[goles_a_favor_col]>0)&(df5[goles_en_contra_col]>0)),
-            calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>0),
-            calcular_racha_booleana(df5, (df5[goles_ht_favor_col]+df5[goles_ht_contra_col])>1.5),
-            calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>1.5),
-            calcular_racha_booleana(df5, (df5[goles_a_favor_col]+df5[goles_en_contra_col])>2.5),
+            calcular_racha_booleana(df5, df5[goles_a_favor_col] >= 1),
+            calcular_racha_maxima_booleana(df5[goles_a_favor_col] >= 1),
+            calcular_racha_booleana(df5, df5[goles_en_contra_col] >= 1),
+            calcular_racha_maxima_booleana(df5[goles_en_contra_col] >= 1),
+            calcular_racha_booleana(df5, df5[goles_a_favor_col] == 0),
+            calcular_racha_maxima_booleana(df5[goles_a_favor_col] == 0),
+            calcular_racha_booleana(df5, df5[goles_en_contra_col] == 0),
+            calcular_racha_maxima_booleana(df5[goles_en_contra_col] == 0),
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col] > 0) & (df5[goles_en_contra_col] > 0)),
+            calcular_racha_booleana(df5, (df5[goles_ht_favor_col] + df5[goles_ht_contra_col]) > 0),
+            calcular_racha_booleana(df5, (df5[goles_ht_favor_col] + df5[goles_ht_contra_col]) > 1.5),
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col] + df5[goles_en_contra_col]) > 1.5),
+            calcular_racha_booleana(df5, (df5[goles_a_favor_col] + df5[goles_en_contra_col]) > 2.5),
             calcular_racha(df5, remates_favor_col, df5[remates_favor_col].mean()),
             calcular_racha(df5, remates_contra_col, df5[remates_contra_col].mean()),
             calcular_racha(df5, a_puerta_favor_col, df5[a_puerta_favor_col].mean()),
             calcular_racha(df5, a_puerta_contra_col, df5[a_puerta_contra_col].mean())
         ],
 
-        # ======= ÚLTIMOS 3 PARTIDOS =======
         f"{equipo_nombre} (3)": [
             round(df3[goles_a_favor_col].mean(), 2),
             round(df3[goles_en_contra_col].mean(), 2),
@@ -2718,15 +2784,23 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             round(df3[goles_st_contra_col].mean(), 2),
             round(df3[xg_favor_col].mean(), 2),
             round(df3[xg_contra_col].mean(), 2),
-            f"{(((df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)).mean()*100):.1f}%",
-            f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0).mean()*100:.1f}%",
-            f"{((df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5).mean()*100:.1f}%",
-            f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5).mean()*100:.1f}%",
-            f"{((df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5).mean()*100:.1f}%",
-            round(df3[remates_favor_col].mean(),1),
-            round(df3[remates_contra_col].mean(),1),
-            round(df3[a_puerta_favor_col].mean(),1),
-            round(df3[a_puerta_contra_col].mean(),1)
+            f"{(df3[goles_a_favor_col] >= 1).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df3[goles_a_favor_col] >= 1),
+            f"{(df3[goles_en_contra_col] >= 1).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df3[goles_en_contra_col] >= 1),
+            f"{(df3[goles_a_favor_col] == 0).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df3[goles_a_favor_col] == 0),
+            f"{(df3[goles_en_contra_col] == 0).mean() * 100:.1f}%",
+            calcular_racha_maxima_booleana(df3[goles_en_contra_col] == 0),
+            f"{(((df3[goles_a_favor_col] > 0) & (df3[goles_en_contra_col] > 0)).mean() * 100):.1f}%",
+            f"{((df3[goles_ht_favor_col] + df3[goles_ht_contra_col]) > 0).mean() * 100:.1f}%",
+            f"{((df3[goles_ht_favor_col] + df3[goles_ht_contra_col]) > 1.5).mean() * 100:.1f}%",
+            f"{((df3[goles_a_favor_col] + df3[goles_en_contra_col]) > 1.5).mean() * 100:.1f}%",
+            f"{((df3[goles_a_favor_col] + df3[goles_en_contra_col]) > 2.5).mean() * 100:.1f}%",
+            round(df3[remates_favor_col].mean(), 1),
+            round(df3[remates_contra_col].mean(), 1),
+            round(df3[a_puerta_favor_col].mean(), 1),
+            round(df3[a_puerta_contra_col].mean(), 1)
         ],
 
         "R3": [
@@ -2738,11 +2812,19 @@ def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
             calcular_racha(df3, goles_st_contra_col, df3[goles_st_contra_col].mean()),
             calcular_racha(df3, xg_favor_col, df3[xg_favor_col].mean()),
             calcular_racha(df3, xg_contra_col, df3[xg_contra_col].mean()),
-            calcular_racha_booleana(df3, (df3[goles_a_favor_col]>0)&(df3[goles_en_contra_col]>0)),
-            calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>0),
-            calcular_racha_booleana(df3, (df3[goles_ht_favor_col]+df3[goles_ht_contra_col])>1.5),
-            calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>1.5),
-            calcular_racha_booleana(df3, (df3[goles_a_favor_col]+df3[goles_en_contra_col])>2.5),
+            calcular_racha_booleana(df3, df3[goles_a_favor_col] >= 1),
+            calcular_racha_maxima_booleana(df3[goles_a_favor_col] >= 1),
+            calcular_racha_booleana(df3, df3[goles_en_contra_col] >= 1),
+            calcular_racha_maxima_booleana(df3[goles_en_contra_col] >= 1),
+            calcular_racha_booleana(df3, df3[goles_a_favor_col] == 0),
+            calcular_racha_maxima_booleana(df3[goles_a_favor_col] == 0),
+            calcular_racha_booleana(df3, df3[goles_en_contra_col] == 0),
+            calcular_racha_maxima_booleana(df3[goles_en_contra_col] == 0),
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col] > 0) & (df3[goles_en_contra_col] > 0)),
+            calcular_racha_booleana(df3, (df3[goles_ht_favor_col] + df3[goles_ht_contra_col]) > 0),
+            calcular_racha_booleana(df3, (df3[goles_ht_favor_col] + df3[goles_ht_contra_col]) > 1.5),
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col] + df3[goles_en_contra_col]) > 1.5),
+            calcular_racha_booleana(df3, (df3[goles_a_favor_col] + df3[goles_en_contra_col]) > 2.5),
             calcular_racha(df3, remates_favor_col, df3[remates_favor_col].mean()),
             calcular_racha(df3, remates_contra_col, df3[remates_contra_col].mean()),
             calcular_racha(df3, a_puerta_favor_col, df3[a_puerta_favor_col].mean()),
@@ -2754,9 +2836,16 @@ def resaltar_estadistica(df_stats):
     def color_fila(row):
         # Nombres de las estadísticas que tendrán color condicional por porcentaje
         estadisticas_porcentaje = [
-            "BTTS", "Gol HT", "Over 1.5 HT", "Over 1.5 Goles", "Over 2.5 Goles"
+            "Marca Gol",
+            "Recibe Gol",
+            "No Marca Gol",
+            "No Recibe Gol",
+            "BTTS",
+            "Gol HT",
+            "Over 1.5 HT",
+            "Over 1.5 Goles",
+            "Over 2.5 Goles"
         ]
-
         # Verificar si la fila actual es una de las estadísticas de porcentaje
         if row["Estadística"] in estadisticas_porcentaje:
             try:
