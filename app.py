@@ -1399,6 +1399,100 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
         "Visitante Gana": round(prob_visitante * 100, 2)
     }
     
+def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
+    if df.empty or col not in df.columns:
+        return {
+        "linea": float(linea),
+        "muestra": 0,
+        "racha_actual": 0,
+        "racha_max": 0,
+        "hits_n": 0,
+        "pct_n": 0.0,
+        "pct_txt": "0.0%",
+        "racha_actual_txt": "0",
+        "racha_max_txt": "0",
+        "hits_txt": "0/0"
+    }
+
+    s = pd.to_numeric(df[col], errors="coerce").dropna().tail(n)
+    partidos = len(s)
+
+    if partidos == 0:
+        return {
+        "linea": float(linea),
+        "muestra": 0,
+        "racha_actual": 0,
+        "racha_max": 0,
+        "hits_n": 0,
+        "pct_n": 0.0,
+        "pct_txt": "0.0%",
+        "racha_actual_txt": "0",
+        "racha_max_txt": "0",
+        "hits_txt": "0/0"
+    }
+
+    if incluir_igual:
+        cumple = (s >= linea).astype(int).tolist()
+    else:
+        cumple = (s > linea).astype(int).tolist()
+        
+    hits = sum(cumple)
+    pct = (hits/partidos) * 100 if partidos > 0 else 0.0
+
+    racha_actual = 0
+    for v in reversed(cumple):
+        if v == 1:
+            racha_actual += 1
+        else:
+            break
+
+    racha_max = 0
+    racha_temp = 0
+    for v in cumple:
+        if v == 1:
+            racha_temp += 1
+            racha_max = max(racha_max, racha_temp)
+        else:
+            racha_temp = 0
+
+    return {
+    "linea": float(linea),
+    "muestra": partidos,
+    "racha_actual": racha_actual,
+    "racha_max": racha_max,
+    "hits_n": hits,
+    "pct_n": pct,
+    "pct_txt": f"{pct:.1f}%",
+    "racha_actual_txt": str(racha_actual),
+    "racha_max_txt": str(racha_max),
+    "hits_txt": f"{hits}/{partidos}"
+    }
+        
+def calcular_racha_supera_linea_total_partido(df, col_local, col_visitante, linea, n=10, incluir_igual=True):
+    if df.empty or col_local not in df.columns or col_visitante not in df.columns:
+        return {
+            "linea": float(linea),
+            "muestra": 0,
+            "racha_actual": 0,
+            "racha_max": 0,
+            "hits_n": 0,
+            "pct_n": 0.0,
+            "pct_txt": "0.0%",
+            "racha_actual_txt": "0",
+            "racha_max_txt": "0",
+            "hits_txt": "0/0"
+        }
+
+    temp = df.copy()
+    temp["_total_partido_"] = (
+        pd.to_numeric(temp[col_local], errors="coerce").fillna(0) +
+        pd.to_numeric(temp[col_visitante], errors="coerce").fillna(0)
+    )
+
+    return calcular_racha_supera_linea(
+        temp, "_total_partido_", linea, n=n, incluir_igual=incluir_igual
+    )
+    
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
 def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = None, equipo_visitante_archivo = None):
     if df_local.empty or df_visitante.empty:
@@ -1559,61 +1653,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
     Remates_att_local = max(remates_local_obj["proyeccion"] * F_xg_local, 0.01)
     Remates_att_vis = max(remates_vis_obj["proyeccion"] * F_xg_vis, 0.01)
     Remates_contra_local = max(remates_local_contra["proyeccion"] * F_xga_local, 0.01)
-    Remates_contra_vis = max(remates_vis_contra["proyeccion"] * F_xga_vis, 0.01)
-    
-    def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
-        if df.empty or col not in df.columns:
-            return {
-                "linea": int(linea),
-                "muestra": 0,
-                "racha_actual": 0,
-                "hits_n": 0,
-                "pct_n": 0.0,
-                "racha_txt": "0 (0)",
-                "hits_txt": "0 (0)",
-                "pct": "0.0%"
-            }
-
-        s = pd.to_numeric(df[col], errors="coerce").dropna().tail(n)
-        partidos = len(s)
-
-        if partidos == 0:
-            return {
-                "linea": int(linea),
-                "muestra": 0,
-                "racha_actual": 0,
-                "hits_n": 0,
-                "pct_n": 0.0,
-                "racha_txt": "0 (0)",
-                "hits_txt": "0 (0)",
-                "pct": "0.0%"
-            }
-
-        if incluir_igual:
-            cumple = (s >= linea).astype(int)
-        else:
-            cumple = (s > linea).astype(int)
-
-        racha = 0
-        for v in reversed(cumple.tolist()):
-            if v == 1:
-                racha += 1
-            else:
-                break
-
-        hits = int(cumple.sum())
-        pct = float(hits / partidos * 100)
-
-        return {
-            "linea": int(linea),
-            "muestra": partidos,
-            "racha_actual": racha,
-            "hits_n": hits,
-            "pct_n": pct,
-            "racha_txt": f"{racha} ({partidos})",
-            "hits_txt": f"{hits} ({partidos})",
-            "pct": f"{pct:.1f}%"
-        }
+    Remates_contra_vis = max(remates_vis_contra["proyeccion"] * F_xga_vis, 0.01)   
         
     linea_rem_l = max(1, int(np.floor(Remates_att_local + 0.5)))
     linea_rem_v = max(1, int(np.floor(Remates_att_vis + 0.5)))
@@ -1627,7 +1667,7 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
 
     SoT_local = max(SoT_local, 0.01)
     SoT_vis = max(SoT_vis, 0.01)    
-
+    
     return {
         "GF_local_blend": GF_local,
         "xGF_local_blend": xGF_local,
@@ -1733,12 +1773,12 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
         "HitsSuperaRemates10V": racha_rem_v["hits_n"],
         "PctSuperaRemates10L": racha_rem_l["pct_n"],
         "PctSuperaRemates10V": racha_rem_v["pct_n"],
-        "RachaSuperaRematesL_txt": racha_rem_l["racha_txt"],
-        "RachaSuperaRematesV_txt": racha_rem_v["racha_txt"],
+        "RachaSuperaRematesL_txt": racha_rem_l["racha_actual_txt"],
+        "RachaSuperaRematesV_txt": racha_rem_v["racha_actual_txt"],
         "HitsSuperaRemates10L_txt": racha_rem_l["hits_txt"],
         "HitsSuperaRemates10V_txt": racha_rem_v["hits_txt"],
-        "PctSuperaRemates10L_txt": racha_rem_l["pct_n"],
-        "PctSuperaRemates10V_txt": racha_rem_v["pct_n"],
+        "PctSuperaRemates10L_txt": racha_rem_l["pct_txt"],
+        "PctSuperaRemates10V_txt": racha_rem_v["pct_txt"],
     }
 
 def prob_over05_total_1t(lmbda_L1, lmbda_V1):
@@ -1963,7 +2003,7 @@ def mostrar_resultados(resultados, df_local, df_visitante):
         st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))        
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
-def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
+def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante):
     if metricas is None:
         return
 
@@ -2083,28 +2123,76 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         lineas_shots_total = [18.5, 19.5, 20.5, 21.5, 22.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5]
         rows_shots_tot = []
         for L in lineas_shots_total:
-            o, u = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
-            rows_shots_tot.append([L, u, o])
+            under, over = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
+
+            hist_local = calcular_racha_supera_linea_total_partido(
+                df_local, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
+            )
+            hist_vis = calcular_racha_supera_linea_total_partido(
+                df_visitante, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
+            )
+
+            rows_shots_tot.append([
+                L,
+                over,
+                under,
+                hist_local["pct_txt"],
+                hist_local["racha_actual_txt"],
+                hist_local["racha_max_txt"],
+                hist_vis["pct_txt"],
+                hist_vis["racha_actual_txt"],
+                hist_vis["racha_max_txt"],
+            ])
+
         df_shots_tot = pd.DataFrame(
-            rows_shots_tot, columns=["Línea", "Over %", "Under %"]
+            rows_shots_tot,
+            columns=[
+                "Línea", "Over %", "Under %",
+                "Local %", "Local Racha", "Local Máx",
+                "Visitante %", "Visitante Racha", "Visitante Máx"
+            ]
         )
-        st.table(formatear_y_resaltar(df_shots_tot, "Over %", (80, 75), col_extra = "Under %"))
+
+        st.table(formatear_y_resaltar(df_shots_tot, "Over %", (80, 75), col_extra="Under %"))
 
     # Tabla 5: Remates por equipo
     with col5:
         st.subheader("Remates por Equipo")
-        lineas_shots_eq = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5, 20.5]
+        lineas_shots_eq = [
+            7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5,
+            15.5, 16.5, 17.5, 18.5, 19.5, 20.5
+        ]
         rows_shots_eq = []
+
         for L in lineas_shots_eq:
             _, oL = poisson_prob_over_under(metricas["Remates_att_local"], L, max_k=25)
             _, oV = poisson_prob_over_under(metricas["Remates_att_vis"], L, max_k=25)
-            rows_shots_eq.append([f"+{L} Remates", oL, oV])
+
+            hist_local = calcular_racha_supera_linea(df_local, "shots_favor", L, n=10, incluir_igual=False)
+            hist_vis = calcular_racha_supera_linea(df_visitante, "shots_favor", L, n=10, incluir_igual=False)
+
+            rows_shots_eq.append([
+                f"+{L} Remates",
+                oL,
+                hist_local["pct_txt"],
+                hist_local["racha_actual_txt"],
+                hist_local["racha_max_txt"],
+                oV,
+                hist_vis["pct_txt"],
+                hist_vis["racha_actual_txt"],
+                hist_vis["racha_max_txt"],
+            ])
 
         df_shots_eq = pd.DataFrame(
             rows_shots_eq,
-            columns=["Remates", "Local %", "Visitante %"]
+            columns=[
+                "Remates",
+                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local",
+                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante"
+            ]
         )
-        st.table(formatear_y_resaltar(df_shots_eq, "Local %", (80, 75), col_extra= "Visitante %"))
+
+        st.table(formatear_y_resaltar(df_shots_eq, "Prob. Local %", (80, 75), col_extra="Prob. Visitante %"))
 
     # === Tabla 6 y 7 en la misma fila ===
     col6, col7 = st.columns(2)
@@ -2115,12 +2203,38 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         lambda_sot_total = metricas["SoT_local"] + metricas["SoT_vis"]
         lineas_sot_total = [5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5]
         rows_sot_tot = []
+
         for L in lineas_sot_total:
-            o, u = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
-            rows_sot_tot.append([L, u, o])
+            under, over = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
+
+            hist_local = calcular_racha_supera_linea_total_partido(
+                df_local, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
+            )
+            hist_vis = calcular_racha_supera_linea_total_partido(
+                df_visitante, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
+            )
+
+            rows_sot_tot.append([
+                L,
+                over,
+                under,
+                hist_local["pct_txt"],
+                hist_local["racha_actual_txt"],
+                hist_local["racha_max_txt"],
+                hist_vis["pct_txt"],
+                hist_vis["racha_actual_txt"],
+                hist_vis["racha_max_txt"],
+            ])
+
         df_sot_tot = pd.DataFrame(
-            rows_sot_tot, columns=["Línea", "Over %", "Under %"]
+            rows_sot_tot,
+            columns=[
+                "Línea", "Over %", "Under %",
+                "Local %", "Local Racha", "Local Máx",
+                "Visitante %", "Visitante Racha", "Visitante Máx"
+            ]
         )
+
         st.table(formatear_y_resaltar(df_sot_tot, "Over %", (80, 75), col_extra="Under %"))
 
     # === Tabla 7: Tiros a puerta por equipo (1 por fila o en dos columnas) ===
@@ -2128,16 +2242,36 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V):
         st.subheader("Tiros a Puerta por Equipo")
         lineas_sot_eq = [2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
         rows_sot_eq = []
+
         for L in lineas_sot_eq:
             _, oL = poisson_prob_over_under(metricas["SoT_local"], L, max_k=10)
             _, oV = poisson_prob_over_under(metricas["SoT_vis"], L, max_k=10)
-            rows_sot_eq.append([f"+{L} Tiros a puerta", oL, oV])
+
+            hist_local = calcular_racha_supera_linea(df_local, "a_puerta_favor", L, n=10, incluir_igual=False)
+            hist_vis = calcular_racha_supera_linea(df_visitante, "a_puerta_favor", L, n=10, incluir_igual=False)
+
+            rows_sot_eq.append([
+                f"+{L} Tiros a puerta",
+                oL,
+                hist_local["pct_txt"],
+                hist_local["racha_actual_txt"],
+                hist_local["racha_max_txt"],
+                oV,
+                hist_vis["pct_txt"],
+                hist_vis["racha_actual_txt"],
+                hist_vis["racha_max_txt"],
+            ])
 
         df_sot_eq = pd.DataFrame(
             rows_sot_eq,
-            columns=["Tiros a puerta", "Local %", "Visitante %"]
+            columns=[
+                "Tiros a puerta",
+                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local",
+                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante"
+            ]
         )
-        st.table(formatear_y_resaltar(df_sot_eq, "Local %", (80, 75), col_extra= "Visitante %"))
+
+        st.table(formatear_y_resaltar(df_sot_eq, "Prob. Local %", (80, 75), col_extra="Prob. Visitante %"))
         
 def prob_a_texto_con_cuota(p):
     try:
@@ -3121,7 +3255,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
             prob_tablas,
         )    
 
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V)    
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V, df_local_all, df_visitante_all)    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")
     
