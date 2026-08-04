@@ -2000,7 +2000,76 @@ def mostrar_resultados(resultados, df_local, df_visitante):
     with col8:
         st.metric("Prom. Remates Visitante", resultados.get("Prom. Remates Visitante", "N/A"))
         st.metric("A puerta Visitante", resultados.get("A puerta Visitante", "N/A"))
-        st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))        
+        st.metric("Total A puerta", resultados.get("Total A puerta", "N/A"))  
+        
+def color_racha(valor, tipo="actual"):
+    try:
+        v = int(float(str(valor).replace("%", "").split(" ")[0]))
+    except Exception:
+        return ""
+
+    if v <= 0:
+        return "background-color: #eceff1; color: #37474f;"
+    elif v <= 2:
+        return "background-color: #ffe0b2; color: #5d4037;"
+    elif v <= 5:
+        return "background-color: #c8e6c9; color: #1b5e20;"
+    else:
+        if tipo == "max":
+            return "background-color: #bbdefb; color: #0d47a1; font-weight: 600;"
+        return "background-color: #81c784; color: #ffffff; font-weight: 600;"
+
+
+def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, col_extra=None, umbrales=(80, 75)):
+    columnas_actual = columnas_actual or []
+    columnas_max = columnas_max or []
+
+    df_fmt = df.reset_index(drop=True).copy()
+
+    if "Línea" in df_fmt.columns:
+        df_fmt["Línea"] = pd.to_numeric(df_fmt["Línea"], errors="coerce").round(1)
+
+    for c in [col_prob, col_extra]:
+        if c and c in df_fmt.columns:
+            df_fmt[c] = pd.to_numeric(df_fmt[c], errors="coerce").round(1)
+
+    def _style(row):
+        estilos = [""] * len(row)
+        for col in columnas_actual:
+            if col in df_fmt.columns:
+                idx = df_fmt.columns.get_loc(col)
+                estilos[idx] = color_racha(row[col], tipo="actual")
+        for col in columnas_max:
+            if col in df_fmt.columns:
+                idx = df_fmt.columns.get_loc(col)
+                estilos[idx] = color_racha(row[col], tipo="max")
+        return estilos
+
+    styler = df_fmt.style.apply(_style, axis=1)
+
+    if col_prob and col_prob in df_fmt.columns:
+        umbral_verde, umbral_azul = umbrales
+
+        def _color_prob(v):
+            try:
+                x = float(v)
+            except Exception:
+                x = 0.0
+            if x >= umbral_verde:
+                return "background-color: #68f78b;"
+            elif x >= umbral_azul:
+                return "background-color: #bbdefb;"
+            return ""
+
+        styler = styler.map(_color_prob, subset=[col_prob])
+        if col_extra and col_extra in df_fmt.columns:
+            styler = styler.map(_color_prob, subset=[col_extra])
+
+    return styler.format({
+        "Línea": "{:.1f}",
+        col_prob: "{:.1f}" if col_prob and col_prob in df_fmt.columns else None,
+        col_extra: "{:.1f}" if col_extra and col_extra in df_fmt.columns else None
+    })            
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
 def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante):
@@ -2153,7 +2222,16 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             ]
         )
 
-        st.table(formatear_y_resaltar(df_shots_tot, "Over %", (80, 75), col_extra="Under %"))
+        st.table(
+            resaltar_rachas(
+                df_shots_tot,
+                columnas_actual=["Local Racha", "Visitante Racha"],
+                columnas_max=["Local Máx", "Visitante Máx"],
+                col_prob="Over %",
+                col_extra="Under %",
+                umbrales=(80, 75)
+            )
+        )
 
     # Tabla 5: Remates por equipo
     with col5:
@@ -2192,7 +2270,16 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             ]
         )
 
-        st.table(formatear_y_resaltar(df_shots_eq, "Prob. Local %", (80, 75), col_extra="Prob. Visitante %"))
+        st.table(
+            resaltar_rachas(
+                df_shots_eq,
+                columnas_actual=["Racha Local", "Racha Visitante"],
+                columnas_max=["Máx Local", "Máx Visitante"],
+                col_prob="Prob. Local %",
+                col_extra="Prob. Visitante %",
+                umbrales=(80, 75)
+            )
+        )
 
     # === Tabla 6 y 7 en la misma fila ===
     col6, col7 = st.columns(2)
@@ -2235,7 +2322,16 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             ]
         )
 
-        st.table(formatear_y_resaltar(df_sot_tot, "Over %", (80, 75), col_extra="Under %"))
+        st.table(
+            resaltar_rachas(
+                df_sot_tot,
+                columnas_actual=["Local Racha", "Visitante Racha"],
+                columnas_max=["Local Máx", "Visitante Máx"],
+                col_prob="Over %",
+                col_extra="Under %",
+                umbrales=(80, 75)
+            )
+        )
 
     # === Tabla 7: Tiros a puerta por equipo (1 por fila o en dos columnas) ===
     with col7:
@@ -2271,7 +2367,16 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             ]
         )
 
-        st.table(formatear_y_resaltar(df_sot_eq, "Prob. Local %", (80, 75), col_extra="Prob. Visitante %"))
+        st.table(
+            resaltar_rachas(
+                df_sot_eq,
+                columnas_actual=["Racha Local", "Racha Visitante"],
+                columnas_max=["Máx Local", "Máx Visitante"],
+                col_prob="Prob. Local %",
+                col_extra="Prob. Visitante %",
+                umbrales=(80, 75)
+            )
+        )
         
 def prob_a_texto_con_cuota(p):
     try:
