@@ -1508,6 +1508,107 @@ def calcular_racha_supera_linea_total_partido(df, col_local, col_visitante, line
         temp, "_total_partido_", linea, n=n, incluir_igual=incluir_igual
     )
     
+def calcular_proyeccion_over_racha(
+    pct_local,
+    racha_local,
+    max_local,
+    pct_visitante,
+    racha_visitante,
+    max_visitante,
+    peso_pct=0.70,
+    peso_racha=0.20,
+    peso_max=0.10,
+):    
+    def numero(valor, default=0.0):
+        try:
+            if pd.isna(valor):
+                return default
+            return float(str(valor).replace("%", "").replace(",", "."))
+        except (TypeError, ValueError):
+            return default
+
+    pct_l = max(0.0, min(100.0, numero(pct_local)))
+    pct_v = max(0.0, min(100.0, numero(pct_visitante)))
+    racha_l = max(0.0, numero(racha_local))
+    racha_v = max(0.0, numero(racha_visitante))
+    max_l = max(0.0, numero(max_local))
+    max_v = max(0.0, numero(max_visitante))
+
+    # Normalizar rachas para que no dominen al porcentaje
+    racha_l_norm = min(100.0, racha_l / 5.0 * 100.0)
+    racha_v_norm = min(100.0, racha_v / 5.0 * 100.0)
+    max_l_norm = min(100.0, max_l / 10.0 * 100.0)
+    max_v_norm = min(100.0, max_v / 10.0 * 100.0)
+
+    proy_local = (
+        peso_pct * pct_l
+        + peso_racha * racha_l_norm
+        + peso_max * max_l_norm
+    )
+    proy_visitante = (
+        peso_pct * pct_v
+        + peso_racha * racha_v_norm
+        + peso_max * max_v_norm
+    )
+
+    proyeccion = (proy_local + proy_visitante) / 2.0
+    return round(max(0.0, min(100.0, proyeccion)), 1)
+
+
+def construir_fila_over_total(
+    linea,
+    lambda_total,
+    df_local,
+    df_visitante,
+    col_local,
+    col_visitante,
+    n=10,
+    incluir_igual=False,
+):
+   
+    under, over_poisson = poisson_prob_over_under(
+        lambda_total, linea, max_k=40
+    )
+
+    hist_local = calcular_racha_supera_linea_total_partido(
+        df_local,
+        col_local,
+        col_visitante,
+        linea,
+        n=n,
+        incluir_igual=incluir_igual,
+    )
+    hist_visitante = calcular_racha_supera_linea_total_partido(
+        df_visitante,
+        col_local,
+        col_visitante,
+        linea,
+        n=n,
+        incluir_igual=incluir_igual,
+    )
+
+    proyeccion = calcular_proyeccion_over_racha(
+        hist_local["pct_n"],
+        hist_local["racha_actual"],
+        hist_local["racha_max"],
+        hist_visitante["pct_n"],
+        hist_visitante["racha_actual"],
+        hist_visitante["racha_max"],
+    )
+
+    return [
+        linea,
+        over_poisson,
+        under,        
+        hist_local["pct_txt"],
+        hist_local["racha_actual_txt"],
+        hist_local["racha_max_txt"],
+        hist_visitante["pct_txt"],
+        hist_visitante["racha_actual_txt"],
+        hist_visitante["racha_max_txt"],
+        proyeccion
+    ]
+    
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
 def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = None, equipo_visitante_archivo = None):
     if df_local.empty or df_visitante.empty:
@@ -2044,7 +2145,11 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
     if "Línea" in df_fmt.columns:
         df_fmt["Línea"] = pd.to_numeric(df_fmt["Línea"], errors="coerce").round(1)
 
-    for c in [col_prob, col_extra]:
+    # Normalizar col_prob y col_extra a listas
+    cols_prob = col_prob if isinstance(col_prob, list) else [col_prob] if col_prob else []
+    cols_extra = col_extra if isinstance(col_extra, list) else [col_extra] if col_extra else []
+
+    for c in cols_prob + cols_extra:
         if c and c in df_fmt.columns:
             df_fmt[c] = pd.to_numeric(df_fmt[c], errors="coerce").round(1)
 
@@ -2062,7 +2167,7 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
 
     styler = df_fmt.style.apply(_style, axis=1)
 
-    if col_prob and col_prob in df_fmt.columns:
+    if any(c and c in df_fmt.columns for c in cols_prob):
         umbral_verde, umbral_azul = umbrales
 
         def _color_prob(v):
@@ -2076,15 +2181,17 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
                 return "background-color: #bbdefb;"
             return ""
 
-        styler = styler.map(_color_prob, subset=[col_prob])
-        if col_extra and col_extra in df_fmt.columns:
-            styler = styler.map(_color_prob, subset=[col_extra])
+        for col in cols_prob:
+            if col and col in df_fmt.columns:
+                styler = styler.map(_color_prob, subset=[col])
+        for col in cols_extra:
+            if col and col in df_fmt.columns:
+                styler = styler.map(_color_prob, subset=[col])
 
     return styler.format({
         "Línea": "{:.1f}",
-        col_prob: "{:.1f}" if col_prob and col_prob in df_fmt.columns else None,
-        col_extra: "{:.1f}" if col_extra and col_extra in df_fmt.columns else None
-    })            
+        **{col: "{:.1f}" for col in cols_prob + cols_extra if col and col in df_fmt.columns}
+    })         
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
 def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante):
@@ -2203,38 +2310,38 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
     
     with col4:
         st.subheader("Remates Totales en el Partido")
-        lambda_shots_total = metricas["Remates_att_local"] + metricas["Remates_att_vis"]
-        lineas_shots_total = [18.5, 19.5, 20.5, 21.5, 22.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5]
-        rows_shots_tot = []
-        for L in lineas_shots_total:
-            under, over = poisson_prob_over_under(lambda_shots_total, L, max_k=25)
 
-            hist_local = calcular_racha_supera_linea_total_partido(
-                df_local, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
-            )
-            hist_vis = calcular_racha_supera_linea_total_partido(
-                df_visitante, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
-            )
+        lambda_shots_total = (
+            metricas["Remates_att_local"]
+            + metricas["Remates_att_vis"]
+        )
 
-            rows_shots_tot.append([
-                L,
-                over,
-                under,
-                hist_local["pct_txt"],
-                hist_local["racha_actual_txt"],
-                hist_local["racha_max_txt"],
-                hist_vis["pct_txt"],
-                hist_vis["racha_actual_txt"],
-                hist_vis["racha_max_txt"],
-            ])
+        lineas_shots_total = [
+            18.5, 19.5, 20.5, 21.5, 22.5, 23.5, 24.5,
+            25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5,
+        ]
+
+        rows_shots_tot = [
+            construir_fila_over_total(
+                linea=L,
+                lambda_total=lambda_shots_total,
+                df_local=df_local,
+                df_visitante=df_visitante,
+                col_local="shots_favor",
+                col_visitante="shots_contra",
+                n=10,
+                incluir_igual=False,
+            )
+            for L in lineas_shots_total
+        ]
 
         df_shots_tot = pd.DataFrame(
             rows_shots_tot,
             columns=[
-                "Línea", "Over %", "Under %",
+                "Línea", "Over %", "Under %", 
                 "Local %", "Local Racha", "Local Máx",
-                "Visitante %", "Visitante Racha", "Visitante Máx"
-            ]
+                "Visitante %", "Visitante Racha", "Visitante Máx", "Proyección %"
+            ],
         )
 
         st.table(
@@ -2242,9 +2349,9 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 df_shots_tot,
                 columnas_actual=["Local Racha", "Visitante Racha"],
                 columnas_max=["Local Máx", "Visitante Máx"],
-                col_prob="Over %",
+                col_prob=["Over %", "Proyección %"],
                 col_extra="Under %",
-                umbrales=(80, 75)
+                umbrales=(80, 75),
             )
         )
 
@@ -2316,16 +2423,26 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 df_visitante, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
             )
 
+            proyeccion = calcular_proyeccion_over_racha(
+                hist_local["pct_n"],
+                hist_local["racha_actual"],
+                hist_local["racha_max"],
+                hist_vis["pct_n"],
+                hist_vis["racha_actual"],
+                hist_vis["racha_max"],
+            )
+
             rows_sot_tot.append([
                 L,
                 over,
-                under,
+                under,                
                 hist_local["pct_txt"],
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
                 hist_vis["pct_txt"],
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
+                proyeccion,
             ])
 
         df_sot_tot = pd.DataFrame(
@@ -2333,7 +2450,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             columns=[
                 "Línea", "Over %", "Under %",
                 "Local %", "Local Racha", "Local Máx",
-                "Visitante %", "Visitante Racha", "Visitante Máx"
+                "Visitante %", "Visitante Racha", "Visitante Máx", "Proyección %"
             ]
         )
 
@@ -2342,7 +2459,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 df_sot_tot,
                 columnas_actual=["Local Racha", "Visitante Racha"],
                 columnas_max=["Local Máx", "Visitante Máx"],
-                col_prob="Over %",
+                col_prob=["Over %", "Proyección %"],
                 col_extra="Under %",
                 umbrales=(80, 75)
             )
