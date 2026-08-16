@@ -1609,6 +1609,132 @@ def construir_fila_over_total(
         proyeccion
     ]
     
+def calcular_racha_concede_linea(
+    df,
+    col_contra,
+    linea,
+    n=10,
+    incluir_igual=False,
+):
+    if df.empty or col_contra not in df.columns:
+        return {
+            "linea": float(linea),
+            "muestra": 0,
+            "racha_actual": 0,
+            "racha_max": 0,
+            "hits_n": 0,
+            "pct_n": 0.0,
+            "pct_txt": "0.0%",
+            "racha_actual_txt": "0",
+            "racha_max_txt": "0",
+            "hits_txt": "0/0"
+        }
+
+    s = pd.to_numeric(df[col_contra], errors="coerce").dropna().tail(n)
+    partidos = len(s)
+
+    if partidos == 0:
+        return {
+            "linea": float(linea),
+            "muestra": 0,
+            "racha_actual": 0,
+            "racha_max": 0,
+            "hits_n": 0,
+            "pct_n": 0.0,
+            "pct_txt": "0.0%",
+            "racha_actual_txt": "0",
+            "racha_max_txt": "0",
+            "hits_txt": "0/0"
+        }
+
+    if incluir_igual:
+        cumple = (s >= linea).astype(int).tolist()
+    else:
+        cumple = (s > linea).astype(int).tolist()
+
+    hits = sum(cumple)
+    pct = (hits / partidos) * 100 if partidos > 0 else 0.0
+
+    racha_actual = 0
+    for v in reversed(cumple):
+        if v == 1:
+            racha_actual += 1
+        else:
+            break
+
+    racha_max = 0
+    racha_temp = 0
+    for v in cumple:
+        if v == 1:
+            racha_temp += 1
+            racha_max = max(racha_max, racha_temp)
+        else:
+            racha_temp = 0
+
+    return {
+        "linea": float(linea),
+        "muestra": partidos,
+        "racha_actual": racha_actual,
+        "racha_max": racha_max,
+        "hits_n": hits,
+        "pct_n": pct,
+        "pct_txt": f"{pct:.1f}%",
+        "racha_actual_txt": str(racha_actual),
+        "racha_max_txt": str(racha_max),
+        "hits_txt": f"{hits}/{partidos}"
+    }
+
+
+def calcular_proyeccion_individual(
+    pct_ofensivo,
+    racha_ofensiva,
+    max_ofensiva,
+    pct_defensivo,
+    racha_defensiva,
+    max_defensiva,
+    peso_ofensivo=0.60,
+    peso_defensivo=0.40,
+):
+    def numero(valor, default=0.0):
+        try:
+            if pd.isna(valor):
+                return default
+            return float(str(valor).replace("%", "").replace(",", "."))
+        except (TypeError, ValueError):
+            return default
+
+    pct_of = max(0.0, min(100.0, numero(pct_ofensivo)))
+    pct_def = max(0.0, min(100.0, numero(pct_defensivo)))
+    racha_of = max(0.0, numero(racha_ofensiva))
+    racha_def = max(0.0, numero(racha_defensiva))
+    max_of = max(0.0, numero(max_ofensiva))
+    max_def = max(0.0, numero(max_defensiva))
+
+    # Normalizar rachas: 5 partidos = 100%, 10 partidos = 100%
+    racha_of_norm = min(100.0, (racha_of / 5.0) * 100.0) if racha_of > 0 else 0.0
+    racha_def_norm = min(100.0, (racha_def / 5.0) * 100.0) if racha_def > 0 else 0.0
+    max_of_norm = min(100.0, (max_of / 10.0) * 100.0) if max_of > 0 else 0.0
+    max_def_norm = min(100.0, (max_def / 10.0) * 100.0) if max_def > 0 else 0.0
+
+    score_ofensivo = (
+        0.70 * pct_of +
+        0.20 * racha_of_norm +
+        0.10 * max_of_norm
+    )
+
+    score_defensivo = (
+        0.70 * pct_def +
+        0.20 * racha_def_norm +
+        0.10 * max_def_norm
+    )
+
+    proyeccion = (
+        peso_ofensivo * score_ofensivo +
+        peso_defensivo * score_defensivo
+    )
+
+    return round(max(0.0, min(100.0, proyeccion)), 1)
+    
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
 def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = None, equipo_visitante_archivo = None):
     if df_local.empty or df_visitante.empty:
@@ -2369,26 +2495,53 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             _, oV = poisson_prob_over_under(metricas["Remates_att_vis"], L, max_k=25)
 
             hist_local = calcular_racha_supera_linea(df_local, "shots_favor", L, n=10, incluir_igual=False)
+            hist_vis_concede = calcular_racha_concede_linea(df_visitante, "shots_contra", L, n=10, incluir_igual=False)
+            
             hist_vis = calcular_racha_supera_linea(df_visitante, "shots_favor", L, n=10, incluir_igual=False)
+            hist_local_concede = calcular_racha_concede_linea(df_local, "shots_contra", L, n=10, incluir_igual=False)
 
+            proyeccion_local = calcular_proyeccion_individual(
+                hist_local["pct_n"],
+                hist_local["racha_actual"],
+                hist_local["racha_max"],
+                hist_vis_concede["pct_n"],
+                hist_vis_concede["racha_actual"],
+                hist_vis_concede["racha_max"],
+                peso_ofensivo=0.60,
+                peso_defensivo=0.40,
+            )
+            
+            proyeccion_vis = calcular_proyeccion_individual(
+                hist_vis["pct_n"],
+                hist_vis["racha_actual"],
+                hist_vis["racha_max"],
+                hist_local_concede["pct_n"],
+                hist_local_concede["racha_actual"],
+                hist_local_concede["racha_max"],
+                peso_ofensivo=0.60,
+                peso_defensivo=0.40,
+            )
+            
             rows_shots_eq.append([
                 f"+{L} Remates",
                 oL,
                 hist_local["pct_txt"],
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
+                proyeccion_local,
                 oV,
                 hist_vis["pct_txt"],
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
+                proyeccion_vis,
             ])
 
         df_shots_eq = pd.DataFrame(
             rows_shots_eq,
             columns=[
                 "Remates",
-                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local",
-                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante"
+                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local", "Proy Local",
+                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante", "Proy Vis"
             ]
         )
 
@@ -2397,8 +2550,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 df_shots_eq,
                 columnas_actual=["Racha Local", "Racha Visitante"],
                 columnas_max=["Máx Local", "Máx Visitante"],
-                col_prob="Prob. Local %",
-                col_extra="Prob. Visitante %",
+                col_prob=["Prob. Local %", "Proy Local"],
+                col_extra=["Prob. Visitante %", "Proy Vis"],
                 umbrales=(80, 75)
             )
         )
@@ -2476,7 +2629,32 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             _, oV = poisson_prob_over_under(metricas["SoT_vis"], L, max_k=10)
 
             hist_local = calcular_racha_supera_linea(df_local, "a_puerta_favor", L, n=10, incluir_igual=False)
+            hist_vis_concede = calcular_racha_concede_linea(df_visitante, "a_puerta_contra", L, n=10, incluir_igual=False)
+            
             hist_vis = calcular_racha_supera_linea(df_visitante, "a_puerta_favor", L, n=10, incluir_igual=False)
+            hist_local_concede = calcular_racha_concede_linea(df_local, "a_puerta_contra", L, n=10, incluir_igual=False)
+
+            proyeccion_local = calcular_proyeccion_individual(
+                hist_local["pct_n"],
+                hist_local["racha_actual"],
+                hist_local["racha_max"],
+                hist_vis_concede["pct_n"],
+                hist_vis_concede["racha_actual"],
+                hist_vis_concede["racha_max"],
+                peso_ofensivo=0.60,
+                peso_defensivo=0.40,
+            )
+            
+            proyeccion_vis = calcular_proyeccion_individual(
+                hist_vis["pct_n"],
+                hist_vis["racha_actual"],
+                hist_vis["racha_max"],
+                hist_local_concede["pct_n"],
+                hist_local_concede["racha_actual"],
+                hist_local_concede["racha_max"],
+                peso_ofensivo=0.60,
+                peso_defensivo=0.40,
+            )
 
             rows_sot_eq.append([
                 f"+{L} Tiros a puerta",
@@ -2484,18 +2662,20 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 hist_local["pct_txt"],
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
+                proyeccion_local,
                 oV,
                 hist_vis["pct_txt"],
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
+                proyeccion_vis,
             ])
 
         df_sot_eq = pd.DataFrame(
             rows_sot_eq,
             columns=[
                 "Tiros a puerta",
-                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local",
-                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante"
+                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local", "Proy Local",
+                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante", "Proy Vis"
             ]
         )
 
@@ -2504,8 +2684,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 df_sot_eq,
                 columnas_actual=["Racha Local", "Racha Visitante"],
                 columnas_max=["Máx Local", "Máx Visitante"],
-                col_prob="Prob. Local %",
-                col_extra="Prob. Visitante %",
+                col_prob=["Prob. Local %", "Proy Local"],
+                col_extra=["Prob. Visitante %", "Proy Vis"],
                 umbrales=(80, 75)
             )
         )
