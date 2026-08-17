@@ -1735,20 +1735,65 @@ def calcular_proyeccion_individual(
 
     return round(max(0.0, min(100.0, proyeccion)), 1)
 
-def normalizar_metrica(pct, racha_act, racha_max):    
+def normalizar_metrica(pct, racha_act, racha_max):   
     componente_pct = 0.60 * pct
     
     if racha_max == 0:
         componente_racha = 0.0
     else:
-        componente_racha = 0.30 * (racha_act / racha_max)
+        componente_racha = 0.30 * ((racha_act / racha_max)*100)
     
     if racha_max > 0 and racha_act == racha_max:
-        componente_bono = 0.10
+        componente_bono = 0.10 * 100
     else:
         componente_bono = 0.0
     
-    return componente_pct + componente_racha + componente_bono
+    resultado = componente_pct + componente_racha + componente_bono
+    
+    return max(0.0, min(100.0, resultado))
+
+def extraer_metricas_gol(stats, equipo_nombre, rango):
+    col_valor = f"{equipo_nombre} ({rango})"
+    col_racha = f"R{rango}"
+
+    if col_valor not in stats or col_racha not in stats:
+        raise KeyError(
+            f"No existen las columnas '{col_valor}' o '{col_racha}'"
+        )
+
+    estadisticas = stats["Estadística"]
+
+    def indice(nombre):
+        if nombre not in estadisticas:
+            raise KeyError(f"No existe la estadística '{nombre}'")
+        return estadisticas.index(nombre)
+
+    def porcentaje(nombre):
+        valor = stats[col_valor][indice(nombre)]
+        if isinstance(valor, str):
+            valor = valor.replace("%", "").replace(",", ".").strip()
+        return float(valor)
+
+    def racha(nombre):
+        return float(stats[col_racha][indice(nombre)])
+
+    return {
+        "marca_pct": porcentaje("Marca Gol"),
+        "marca_racha": racha("Marca Gol"),
+        "marca_max": racha("Máx. Racha Marca Gol"),
+
+        "recibe_pct": porcentaje("Recibe Gol"),
+        "recibe_racha": racha("Recibe Gol"),
+        "recibe_max": racha("Máx. Racha Recibe Gol"),
+
+        "no_marca_pct": porcentaje("No Marca Gol"),
+        "no_marca_racha": racha("No Marca Gol"),
+        "no_marca_max": racha("Máx. Racha No Marca"),
+
+        "no_recibe_pct": porcentaje("No Recibe Gol"),
+        "no_recibe_racha": racha("No Recibe Gol"),
+        "no_recibe_max": racha("Máx. Racha No Recibe"),
+    }
 
 def calcular_prediccion_marca_recibe(
     marca_gol_local_pct, racha_marca_local, max_racha_marca_local,
@@ -1775,26 +1820,26 @@ def calcular_prediccion_marca_recibe(
     
     # === CALCULAR ATAQUE Y DEFENSA ===
     ataque_local = (
-        0.50 * marca_gol_local_norm +
-        0.20 * (1 - no_marca_gol_local_norm) +
-        0.30 * recibe_gol_visitante_norm
+        0.50 * (marca_gol_local_norm / 100) +
+        0.20 * (1 - (no_marca_gol_local_norm / 100)) +
+        0.30 * (recibe_gol_visitante_norm / 100)
     )
-    
+
     defensa_local = (
-        0.50 * no_recibe_gol_local_norm +
-        0.50 * (1 - recibe_gol_local_norm)
+        0.50 * ((100 - no_recibe_gol_local_norm) / 100) +
+        0.50 * ((100 - recibe_gol_local_norm) / 100)
     )
-    
+
     ataque_visitante = (
-        0.50 * marca_gol_visitante_norm +
-        0.20 * (1 - no_marca_gol_visitante_norm) +
-        0.30 * recibe_gol_local_norm
+        0.50 * (marca_gol_visitante_norm / 100) +
+        0.20 * (1 - (no_marca_gol_visitante_norm / 100)) +
+        0.30 * (recibe_gol_local_norm / 100)
     )
-    
+
     defensa_visitante = (
-        0.50 * no_recibe_gol_visitante_norm +
-        0.50 * (1 - recibe_gol_visitante_norm)
-    )
+        0.50 * ((100 - no_recibe_gol_visitante_norm) / 100) +
+        0.50 * ((100 - recibe_gol_visitante_norm) / 100)
+    )    
     
     # === PROBABILIDAD DE MARCAR ===
     prob_marcar_local = min(0.99, 0.65 * ataque_local + 0.35 * (1 - defensa_visitante))
@@ -1805,7 +1850,7 @@ def calcular_prediccion_marca_recibe(
     
     # === LAMBDA POISSON ===
     lambda_local = -log(1 - prob_marcar_local)
-    lambda_visitante = -log(1 - prob_marcar_visitante)
+    lambda_visitante = -log(1 - prob_marcar_visitante)    
     
     # === PROBABILIDADES DE MERCADO ===
     prob_1x2 = poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8)
@@ -1815,6 +1860,8 @@ def calcular_prediccion_marca_recibe(
     
     prob_marca_local = probabilidad_poisson(lambda_local) * 100
     prob_marca_visitante = probabilidad_poisson(lambda_visitante) * 100
+    
+    st.write(prob_1x2)
     
     return {
         "Gana Local": prob_1x2["1"],
@@ -3792,60 +3839,66 @@ if equipo_local_nombre and equipo_visitante_nombre:
     stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
     stats_visitante = calcular_estadisticas_y_rachas(df_visitante_all, equipo_visitante_nombre, "visitante")
 
-    if stats_local and stats_visitante:
-        idx_marca_gol = stats_local["Estadística"].index("Marca Gol")
-        idx_recibe_gol = stats_local["Estadística"].index("Recibe Gol")
-        idx_no_marca_gol = stats_local["Estadística"].index("No Marca Gol")
-        idx_no_recibe_gol = stats_local["Estadística"].index("No Recibe Gol")
-        
-        col_pct = f"{equipo_local_nombre} ({rango_actual})"
-        col_racha = f"R{rango_actual}"
+    if stats_local and stats_visitante:          
+        if rango_actual == 10:
+            col_pct_local = f"{equipo_local_nombre} (10)"
+            col_pct_visitante = f"{equipo_visitante_nombre} (10)"
+            col_racha = "R10"
+        elif rango_actual == 5:
+            col_pct_local = f"{equipo_local_nombre} (5)"
+            col_pct_visitante = f"{equipo_visitante_nombre} (5)"
+            col_racha = "R5"
+        else: 
+            col_pct_local = f"{equipo_local_nombre} (3)"
+            col_pct_visitante = f"{equipo_visitante_nombre} (3)"
+            col_racha = "R3"
                
-        # Local
-        marca_gol_local_pct = float(stats_local[col_pct][idx_marca_gol].replace("%", ""))
-        racha_marca_local = stats_local[col_racha][idx_marca_gol]
-        max_racha_marca_local = stats_local[col_racha][idx_marca_gol + 1] 
-        
-        recibe_gol_local_pct = float(stats_local[col_pct][idx_recibe_gol].replace("%", ""))
-        racha_recibe_local = stats_local[col_racha][idx_recibe_gol]
-        max_racha_recibe_local = stats_local[col_racha][idx_recibe_gol + 1]
-        
-        no_marca_gol_local_pct = float(stats_local[col_pct][idx_no_marca_gol].replace("%", ""))
-        racha_no_marca_local = stats_local[col_racha][idx_no_marca_gol]
-        max_racha_no_marca_local = stats_local[col_racha][idx_no_marca_gol + 1]
-        
-        no_recibe_gol_local_pct = float(stats_local[col_pct][idx_no_recibe_gol].replace("%", ""))
-        racha_no_recibe_local = stats_local[col_racha][idx_no_recibe_gol]
-        max_racha_no_recibe_local = stats_local[col_racha][idx_no_recibe_gol + 1]
-        
-        # Visitante
-        marca_gol_visitante_pct = float(stats_visitante[col_pct][idx_marca_gol].replace("%", ""))
-        racha_marca_visitante = stats_visitante[col_racha][idx_marca_gol]
-        max_racha_marca_visitante = stats_visitante[col_racha][idx_marca_gol + 1]
-        
-        recibe_gol_visitante_pct = float(stats_visitante[col_pct][idx_recibe_gol].replace("%", ""))
-        racha_recibe_visitante = stats_visitante[col_racha][idx_recibe_gol]
-        max_racha_recibe_visitante = stats_visitante[col_racha][idx_recibe_gol + 1]
-        
-        no_marca_gol_visitante_pct = float(stats_visitante[col_pct][idx_no_marca_gol].replace("%", ""))
-        racha_no_marca_visitante = stats_visitante[col_racha][idx_no_marca_gol]
-        max_racha_no_marca_visitante = stats_visitante[col_racha][idx_no_marca_gol + 1]
-        
-        no_recibe_gol_visitante_pct = float(stats_visitante[col_pct][idx_no_recibe_gol].replace("%", ""))
-        racha_no_recibe_visitante = stats_visitante[col_racha][idx_no_recibe_gol]
-        max_racha_no_recibe_visitante = stats_visitante[col_racha][idx_no_recibe_gol + 1]
+        metricas_local = extraer_metricas_gol(
+            stats_local,
+            equipo_local_nombre,
+            rango_actual,
+        )
+
+        metricas_visitante = extraer_metricas_gol(
+            stats_visitante,
+            equipo_visitante_nombre,
+            rango_actual,
+        )
         
         prediccion = calcular_prediccion_marca_recibe(
             # Local
-            marca_gol_local_pct, racha_marca_local, max_racha_marca_local,
-            recibe_gol_local_pct, racha_recibe_local, max_racha_recibe_local,
-            no_marca_gol_local_pct, racha_no_marca_local, max_racha_no_marca_local,
-            no_recibe_gol_local_pct, racha_no_recibe_local, max_racha_no_recibe_local,
+            metricas_local["marca_pct"],
+            metricas_local["marca_racha"],
+            metricas_local["marca_max"],
+
+            metricas_local["recibe_pct"],
+            metricas_local["recibe_racha"],
+            metricas_local["recibe_max"],
+
+            metricas_local["no_marca_pct"],
+            metricas_local["no_marca_racha"],
+            metricas_local["no_marca_max"],
+
+            metricas_local["no_recibe_pct"],
+            metricas_local["no_recibe_racha"],
+            metricas_local["no_recibe_max"],
+
             # Visitante
-            marca_gol_visitante_pct, racha_marca_visitante, max_racha_marca_visitante,
-            recibe_gol_visitante_pct, racha_recibe_visitante, max_racha_recibe_visitante,
-            no_marca_gol_visitante_pct, racha_no_marca_visitante, max_racha_no_marca_visitante,
-            no_recibe_gol_visitante_pct, racha_no_recibe_visitante, max_racha_no_recibe_visitante,
+            metricas_visitante["marca_pct"],
+            metricas_visitante["marca_racha"],
+            metricas_visitante["marca_max"],
+
+            metricas_visitante["recibe_pct"],
+            metricas_visitante["recibe_racha"],
+            metricas_visitante["recibe_max"],
+
+            metricas_visitante["no_marca_pct"],
+            metricas_visitante["no_marca_racha"],
+            metricas_visitante["no_marca_max"],
+
+            metricas_visitante["no_recibe_pct"],
+            metricas_visitante["no_recibe_racha"],
+            metricas_visitante["no_recibe_max"],
         )
         
         rows_prediccion = [
