@@ -1820,37 +1820,34 @@ def calcular_prediccion_marca_recibe(
     
     # === CALCULAR ATAQUE Y DEFENSA ===
     ataque_local = (
-        0.50 * (marca_gol_local_norm / 100) +
-        0.20 * (1 - (no_marca_gol_local_norm / 100)) +
-        0.30 * (recibe_gol_visitante_norm / 100)
+        0.50 * (marca_gol_local_norm) +
+        0.20 * (100 - (no_marca_gol_local_norm)) +
+        0.30 * (recibe_gol_visitante_norm)
     )
 
     defensa_local = (
-        0.50 * ((100 - no_recibe_gol_local_norm) / 100) +
-        0.50 * ((100 - recibe_gol_local_norm) / 100)
+        0.50 * no_recibe_gol_local_norm +
+        0.50 * (100 - recibe_gol_local_norm)
     )
 
     ataque_visitante = (
-        0.50 * (marca_gol_visitante_norm / 100) +
-        0.20 * (1 - (no_marca_gol_visitante_norm / 100)) +
-        0.30 * (recibe_gol_local_norm / 100)
+        0.50 * (marca_gol_visitante_norm) +
+        0.20 * (100 - (no_marca_gol_visitante_norm)) +
+        0.30 * (recibe_gol_local_norm)
     )
 
     defensa_visitante = (
-        0.50 * ((100 - no_recibe_gol_visitante_norm) / 100) +
-        0.50 * ((100 - recibe_gol_visitante_norm) / 100)
-    )    
-    
-    # === PROBABILIDAD DE MARCAR ===
-    prob_marcar_local = min(0.99, 0.65 * ataque_local + 0.35 * (1 - defensa_visitante))
-    prob_marcar_visitante = min(0.99, 0.65 * ataque_visitante + 0.35 * (1 - defensa_local))
-    
-    prob_marcar_local = max(0.01, prob_marcar_local)
-    prob_marcar_visitante = max(0.01, prob_marcar_visitante)
-    
+        0.50 * no_recibe_gol_visitante_norm +
+        0.50 * (100 - recibe_gol_visitante_norm)
+    )   
+      
+    # === PROBABILIDAD DE MARCAR ===   
+    prob_marcar_local = max(1, min(99, 0.65 * ataque_local + 0.35 * (100 - defensa_visitante)))
+    prob_marcar_visitante = max(1, min(99, 0.65 * ataque_visitante + 0.35 * (100 - defensa_local)))
+   
     # === LAMBDA POISSON ===
-    lambda_local = -log(1 - prob_marcar_local)
-    lambda_visitante = -log(1 - prob_marcar_visitante)    
+    lambda_local = -log(1 - prob_marcar_local/100) 
+    lambda_visitante = -log(1 - prob_marcar_visitante/100)     
     
     # === PROBABILIDADES DE MERCADO ===
     prob_1x2 = poisson_prob_1x2_y_dobles(lambda_local, lambda_visitante, max_goals=8)
@@ -1859,9 +1856,7 @@ def calcular_prediccion_marca_recibe(
     _, over_25 = poisson_prob_total_over_under(lambda_local, lambda_visitante, 2.5, max_k=8)
     
     prob_marca_local = probabilidad_poisson(lambda_local) * 100
-    prob_marca_visitante = probabilidad_poisson(lambda_visitante) * 100
-    
-    st.write(prob_1x2)
+    prob_marca_visitante = probabilidad_poisson(lambda_visitante) * 100   
     
     return {
         "Gana Local": prob_1x2["1"],
