@@ -1154,7 +1154,7 @@ def resumen_ventana(df, col, n):
         "centro": centro
     }
     
-def blend_resumenes_10_5_3(df, col, pesos=(0.50, 0.30, 0.20)):
+def blend_resumenes_10_5_3(df, col, pesos=(0.25, 0.50, 0.25)):
     w10, w5, w3 = pesos
 
     r10 = resumen_ventana(df, col, 10)
@@ -1457,7 +1457,7 @@ def calcular_probabilidades_resultado(lambda_local, lambda_visitante, max_goals=
         "Visitante Gana": round(prob_visitante * 100, 2)
     }
     
-def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
+def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=False):
     if df.empty or col not in df.columns:
         return {
         "linea": float(linea),
@@ -1526,7 +1526,7 @@ def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=True):
     "hits_txt": f"{hits}/{partidos}"
     }
         
-def calcular_racha_supera_linea_total_partido(df, col_local, col_visitante, linea, n=10, incluir_igual=True):
+def calcular_racha_supera_linea_total_partido(df, col_local, col_visitante, linea, n=10, incluir_igual=False):
     if df.empty or col_local not in df.columns or col_visitante not in df.columns:
         return {
             "linea": float(linea),
@@ -1597,6 +1597,77 @@ def calcular_proyeccion_over_racha(
     proyeccion = (proy_local + proy_visitante) / 2.0
     return round(max(0.0, min(100.0, proyeccion)), 1)
 
+def probabilidad_over_remates(
+    proy_equipo,
+    proy_rival,
+    linea,
+    cv_equipo,
+    cv_rival,
+    n_equipo,
+    n_rival,
+    peso_equipo=0.60,
+    peso_rival=0.40,
+):
+    lambda_remates = (
+        peso_equipo * proy_equipo +
+        peso_rival * proy_rival
+    )
+
+    cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
+    factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
+    lambda_ajustado = lambda_remates * factor_vol
+    
+    penalizacion_muestra = 0.0
+    if n_equipo < 10:
+        penalizacion_muestra += (10 - n_equipo) * 0.005
+    if n_rival < 10:
+        penalizacion_muestra += (10 - n_rival) * 0.003
+
+    penalizacion_muestra = min(0.15, penalizacion_muestra)
+    
+    from math import floor
+    k_linea = int(floor(linea))
+    p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
+    
+    p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
+
+    return round(p_over * 100, 1)
+
+def probabilidad_over_sot(
+    sot_equipo,
+    sot_rival,
+    linea,
+    cv_equipo,
+    cv_rival,
+    n_equipo,
+    n_rival,
+    peso_equipo=0.60,
+    peso_rival=0.40,
+):
+    lambda_sot = (
+        peso_equipo * sot_equipo +
+        peso_rival * sot_rival
+    )
+    
+    cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
+    factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
+    lambda_ajustado = lambda_sot * factor_vol
+    
+    penalizacion_muestra = 0.0
+    if n_equipo < 10:
+        penalizacion_muestra += (10 - n_equipo) * 0.005
+    if n_rival < 10:
+        penalizacion_muestra += (10 - n_rival) * 0.003
+
+    penalizacion_muestra = min(0.15, penalizacion_muestra)
+    
+    from math import floor
+    k_linea = int(floor(linea))
+    p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
+    p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
+
+    return round(p_over * 100, 1)
+
 
 def construir_fila_over_total(
     linea,
@@ -1607,6 +1678,12 @@ def construir_fila_over_total(
     col_visitante,
     n=10,
     incluir_igual=False,
+    proy_rem_local=None,
+    proy_rem_vis=None,
+    cv_rem_local=None,
+    cv_rem_vis=None,
+    n_rem_local=None,
+    n_rem_vis=None,
 ):
    
     under, over_poisson = poisson_prob_over_under(
@@ -1639,10 +1716,46 @@ def construir_fila_over_total(
         hist_visitante["racha_max"],
     )
 
+    if (
+        proy_rem_local is not None and
+        proy_rem_vis is not None and
+        cv_rem_local is not None and
+        cv_rem_vis is not None and
+        n_rem_local is not None and
+        n_rem_vis is not None
+    ):
+        lambda_rem_total = proy_rem_local + proy_rem_vis
+
+        cv_mix = 0.6 * cv_rem_local + 0.4 * cv_rem_vis
+        factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
+        lambda_ajustado = lambda_rem_total * factor_vol
+        
+        penalizacion_muestra = 0.0
+        if n_rem_local < 10:
+            penalizacion_muestra += (10 - n_rem_local) * 0.005
+        if n_rem_vis < 10:
+            penalizacion_muestra += (10 - n_rem_vis) * 0.003
+        penalizacion_muestra = min(0.15, penalizacion_muestra)
+        
+        from math import floor        
+        k_linea = int(floor(linea))
+        p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
+        p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
+        proyeccion = round(p_over * 100, 1)
+    else:
+        proyeccion = calcular_proyeccion_over_racha(
+            hist_local["pct_n"],
+            hist_local["racha_actual"],
+            hist_local["racha_max"],
+            hist_visitante["pct_n"],
+            hist_visitante["racha_actual"],
+            hist_visitante["racha_max"],
+        )
+
     return [
         linea,
         over_poisson,
-        under,        
+        under, 
         hist_local["pct_txt"],
         hist_local["racha_actual_txt"],
         hist_local["racha_max_txt"],
@@ -1729,54 +1842,50 @@ def calcular_racha_concede_linea(
 
 
 def calcular_proyeccion_individual(
-    pct_ofensivo,
-    racha_ofensiva,
-    max_ofensiva,
-    pct_defensivo,
-    racha_defensiva,
-    max_defensiva,
-    peso_ofensivo=0.60,
-    peso_defensivo=0.40,
+    proy_equipo,
+    proy_rival,
+    linea,
+    cv_equipo,
+    cv_rival,
+    n_equipo,
+    n_rival,
+    peso_equipo=0.60,
+    peso_rival=0.40,
 ):
-    def numero(valor, default=0.0):
-        try:
-            if pd.isna(valor):
-                return default
-            return float(str(valor).replace("%", "").replace(",", "."))
-        except (TypeError, ValueError):
-            return default
-
-    pct_of = max(0.0, min(100.0, numero(pct_ofensivo)))
-    pct_def = max(0.0, min(100.0, numero(pct_defensivo)))
-    racha_of = max(0.0, numero(racha_ofensiva))
-    racha_def = max(0.0, numero(racha_defensiva))
-    max_of = max(0.0, numero(max_ofensiva))
-    max_def = max(0.0, numero(max_defensiva))
-
-    # Normalizar rachas: 5 partidos = 100%, 10 partidos = 100%
-    racha_of_norm = min(100.0, (racha_of / 5.0) * 100.0) if racha_of > 0 else 0.0
-    racha_def_norm = min(100.0, (racha_def / 5.0) * 100.0) if racha_def > 0 else 0.0
-    max_of_norm = min(100.0, (max_of / 10.0) * 100.0) if max_of > 0 else 0.0
-    max_def_norm = min(100.0, (max_def / 10.0) * 100.0) if max_def > 0 else 0.0
-
-    score_ofensivo = (
-        0.70 * pct_of +
-        0.20 * racha_of_norm +
-        0.10 * max_of_norm
+    return probabilidad_over_remates(
+        proy_equipo,
+        proy_rival,
+        linea,
+        cv_equipo,
+        cv_rival,
+        n_equipo,
+        n_rival,
+        peso_equipo,
+        peso_rival,
     )
-
-    score_defensivo = (
-        0.70 * pct_def +
-        0.20 * racha_def_norm +
-        0.10 * max_def_norm
+    
+def calcular_proyeccion_individual_sot(
+    sot_equipo,
+    sot_rival,
+    linea,
+    cv_equipo,
+    cv_rival,
+    n_equipo,
+    n_rival,
+    peso_equipo=0.60,
+    peso_rival=0.40,
+):
+    return probabilidad_over_sot(
+        sot_equipo,
+        sot_rival,
+        linea,
+        cv_equipo,
+        cv_rival,
+        n_equipo,
+        n_rival,
+        peso_equipo,
+        peso_rival,
     )
-
-    proyeccion = (
-        peso_ofensivo * score_ofensivo +
-        peso_defensivo * score_defensivo
-    )
-
-    return round(max(0.0, min(100.0, proyeccion)), 1)
 
 def normalizar_metrica(pct, racha_act, racha_max):   
     componente_pct = 0.60 * pct
@@ -2637,6 +2746,13 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 col_visitante="shots_contra",
                 n=10,
                 incluir_igual=False,
+                # Nuevos parámetros para probabilidad basada en proyección
+                proy_rem_local=metricas["Remates_att_local"],
+                proy_rem_vis=metricas["Remates_att_vis"],
+                cv_rem_local=metricas["Remates_cv_local"],
+                cv_rem_vis=metricas["Remates_cv_vis"],
+                n_rem_local=min(len(df_local), 10),
+                n_rem_vis=min(len(df_visitante), 10),
             )
             for L in lineas_shots_total
         ]
@@ -2681,27 +2797,30 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             hist_local_concede = calcular_racha_concede_linea(df_local, "shots_contra", L, n=10, incluir_igual=False)
 
             proyeccion_local = calcular_proyeccion_individual(
-                hist_local["pct_n"],
-                hist_local["racha_actual"],
-                hist_local["racha_max"],
-                hist_vis_concede["pct_n"],
-                hist_vis_concede["racha_actual"],
-                hist_vis_concede["racha_max"],
-                peso_ofensivo=0.60,
-                peso_defensivo=0.40,
+                proy_equipo=metricas["Remates_att_local"],
+                proy_rival=metricas["Remates_contra_vis"],  
+                linea=L,
+                cv_equipo=metricas["Remates_cv_local"],
+                cv_rival=metricas["Remates_cv_vis"],
+                n_equipo=min(len(df_local), 10),
+                n_rival=min(len(df_visitante), 10),
+                peso_equipo=0.60,
+                peso_rival=0.40,
             )
+
             
             proyeccion_vis = calcular_proyeccion_individual(
-                hist_vis["pct_n"],
-                hist_vis["racha_actual"],
-                hist_vis["racha_max"],
-                hist_local_concede["pct_n"],
-                hist_local_concede["racha_actual"],
-                hist_local_concede["racha_max"],
-                peso_ofensivo=0.60,
-                peso_defensivo=0.40,
+                proy_equipo=metricas["Remates_att_vis"],
+                proy_rival=metricas["Remates_contra_local"],  
+                linea=L,
+                cv_equipo=metricas["Remates_cv_vis"],
+                cv_rival=metricas["Remates_cv_local"],
+                n_equipo=min(len(df_visitante), 10),
+                n_rival=min(len(df_local), 10),
+                peso_equipo=0.60,
+                peso_rival=0.40,
             )
-            
+                        
             rows_shots_eq.append([
                 f"+{L} Remates",
                 oL,
@@ -2755,15 +2874,29 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             hist_vis = calcular_racha_supera_linea_total_partido(
                 df_visitante, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
             )
+            
+            from math import floor
 
-            proyeccion = calcular_proyeccion_over_racha(
-                hist_local["pct_n"],
-                hist_local["racha_actual"],
-                hist_local["racha_max"],
-                hist_vis["pct_n"],
-                hist_vis["racha_actual"],
-                hist_vis["racha_max"],
-            )
+            lambda_sot_total = metricas["SoT_local"] + metricas["SoT_vis"]
+            cv_sot_local = metricas.get("Remates_cv_local", 0.3)
+            cv_sot_vis = metricas.get("Remates_cv_vis", 0.3)
+            cv_mix = 0.6 * cv_sot_local + 0.4 * cv_sot_vis
+            factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
+            lambda_ajustado = lambda_sot_total * factor_vol
+            
+            n_sot_local = min(len(df_local), 10)
+            n_sot_vis = min(len(df_visitante), 10)
+            penalizacion_muestra = 0.0
+            if n_sot_local < 10:
+                penalizacion_muestra += (10 - n_sot_local) * 0.005
+            if n_sot_vis < 10:
+                penalizacion_muestra += (10 - n_sot_vis) * 0.003
+            penalizacion_muestra = min(0.15, penalizacion_muestra)
+            
+            k_linea = int(floor(L))
+            p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
+            p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
+            proyeccion = round(p_over * 100, 1)
 
             rows_sot_tot.append([
                 L,
@@ -2814,26 +2947,28 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             hist_vis = calcular_racha_supera_linea(df_visitante, "a_puerta_favor", L, n=10, incluir_igual=False)
             hist_local_concede = calcular_racha_concede_linea(df_local, "a_puerta_contra", L, n=10, incluir_igual=False)
 
-            proyeccion_local = calcular_proyeccion_individual(
-                hist_local["pct_n"],
-                hist_local["racha_actual"],
-                hist_local["racha_max"],
-                hist_vis_concede["pct_n"],
-                hist_vis_concede["racha_actual"],
-                hist_vis_concede["racha_max"],
-                peso_ofensivo=0.60,
-                peso_defensivo=0.40,
+            proyeccion_local = calcular_proyeccion_individual_sot(
+                sot_equipo=metricas["SoT_local"],
+                sot_rival=metricas["SoT_vis"],
+                linea=L,
+                cv_equipo=metricas.get("Remates_cv_local", 0.3),
+                cv_rival=metricas.get("Remates_cv_vis", 0.3),
+                n_equipo=min(len(df_local), 10),
+                n_rival=min(len(df_visitante), 10),
+                peso_equipo=0.60,
+                peso_rival=0.40,
             )
             
-            proyeccion_vis = calcular_proyeccion_individual(
-                hist_vis["pct_n"],
-                hist_vis["racha_actual"],
-                hist_vis["racha_max"],
-                hist_local_concede["pct_n"],
-                hist_local_concede["racha_actual"],
-                hist_local_concede["racha_max"],
-                peso_ofensivo=0.60,
-                peso_defensivo=0.40,
+            proyeccion_vis = calcular_proyeccion_individual_sot(
+                sot_equipo=metricas["SoT_vis"],
+                sot_rival=metricas["SoT_local"],
+                linea=L,
+                cv_equipo=metricas.get("Remates_cv_vis", 0.3),
+                cv_rival=metricas.get("Remates_cv_local", 0.3),
+                n_equipo=min(len(df_visitante), 10),
+                n_rival=min(len(df_local), 10),
+                peso_equipo=0.60,
+                peso_rival=0.40,
             )
 
             rows_sot_eq.append([
