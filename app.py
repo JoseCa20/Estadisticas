@@ -1525,6 +1525,81 @@ def calcular_racha_supera_linea(df, col, linea, n=10, incluir_igual=False):
     "racha_max_txt": str(racha_max),
     "hits_txt": f"{hits}/{partidos}"
     }
+    
+def calcular_score_regularidad(pct_historico, racha_actual, racha_max):    
+    racha_norm = min(100.0, (racha_actual / 5.0) * 100.0)    
+    racha_max_norm = min(100.0, (racha_max / 10.0) * 100.0)
+    
+    score = (
+        0.70 * pct_historico +
+        0.20 * racha_norm +
+        0.10 * racha_max_norm
+    )
+    
+    return round(score, 1)
+
+def calcular_score_regularidad_goles(pct_marca, pct_recibe, racha_marca, racha_no_marca, racha_recibe, racha_no_recibe):
+    racha_marca_norm = min(100.0, (racha_marca / 5.0) * 100.0)
+    
+    score_ofensivo = (
+        0.50 * pct_marca +
+        0.30 * racha_marca_norm +
+        0.20 * pct_marca  
+    )
+    
+    score_defensivo = pct_recibe  
+    
+    score_combinado = 0.60 * score_ofensivo + 0.40 * score_defensivo
+    
+    return round(min(100.0, max(0.0, score_combinado)), 1)
+
+def ajustar_prob_por_regularidad(
+    prob_base,
+    score_regularidad,
+    cv,
+    n_partidos,
+    peso_regularidad_max=0.70,
+    peso_regularidad_min=0.20,
+):
+    confianza = score_regularidad / 100.0
+    
+    penalizacion_cv = 0.15 * cv 
+    
+    penalizacion_muestra = max(0, (10 - n_partidos) * 0.01)
+    
+    peso_regularidad = confianza * (1 - penalizacion_cv - penalizacion_muestra)
+    peso_regularidad = max(peso_regularidad_min, min(peso_regularidad_max, peso_regularidad))
+    
+    prob_final = (
+        peso_regularidad * score_regularidad +
+        (1 - peso_regularidad) * prob_base
+    )
+    
+    return round(max(0.0, min(100.0, prob_final)), 1)
+
+def ajustar_prob_goles_por_regularidad(
+    prob_base,
+    score_regularidad,
+    cv_goles,
+    n_partidos,
+    peso_regularidad_max=0.60,
+    peso_regularidad_min=0.25,
+):   
+    confianza = score_regularidad / 100.0
+    
+    penalizacion_cv = 0.20 * cv_goles 
+    
+    penalizacion_muestra = max(0, (10 - n_partidos) * 0.01)
+    
+    peso_regularidad = confianza * (1 - penalizacion_cv - penalizacion_muestra)
+    peso_regularidad = max(peso_regularidad_min, min(peso_regularidad_max, peso_regularidad))
+    
+    prob_final = (
+        peso_regularidad * score_regularidad +
+        (1 - peso_regularidad) * prob_base
+    )
+    
+    return round(max(0.0, min(100.0, prob_final)), 1)
         
 def calcular_racha_supera_linea_total_partido(df, col_local, col_visitante, linea, n=10, incluir_igual=False):
     if df.empty or col_local not in df.columns or col_visitante not in df.columns:
@@ -1851,8 +1926,14 @@ def calcular_proyeccion_individual(
     n_rival,
     peso_equipo=0.60,
     peso_rival=0.40,
+    pct_historico_equipo=None,
+    racha_actual_equipo=None,
+    racha_max_equipo=None,
+    pct_historico_rival=None,
+    racha_actual_rival=None,
+    racha_max_rival=None,
 ):
-    return probabilidad_over_remates(
+    prob_base = probabilidad_over_remates(
         proy_equipo,
         proy_rival,
         linea,
@@ -1864,6 +1945,45 @@ def calcular_proyeccion_individual(
         peso_rival,
     )
     
+    if (
+        pct_historico_equipo is None or
+        racha_actual_equipo is None or
+        racha_max_equipo is None
+    ):
+        return prob_base
+    
+    score_equipo = calcular_score_regularidad(
+        pct_historico_equipo,
+        racha_actual_equipo,
+        racha_max_equipo,
+    )
+    
+    if (
+        pct_historico_rival is not None and
+        racha_actual_rival is not None and
+        racha_max_rival is not None
+    ):
+        score_rival = calcular_score_regularidad(
+            pct_historico_rival,
+            racha_actual_rival,
+            racha_max_rival,
+        )
+        score_combinado = 0.60 * score_equipo + 0.40 * score_rival
+    else:
+        score_combinado = score_equipo
+    
+    cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
+    n_mix = min(n_equipo, n_rival)
+    
+    prob_final = ajustar_prob_por_regularidad(
+        prob_base,
+        score_combinado,
+        cv_mix,
+        n_mix,
+    )
+    
+    return prob_final
+    
 def calcular_proyeccion_individual_sot(
     sot_equipo,
     sot_rival,
@@ -1874,8 +1994,14 @@ def calcular_proyeccion_individual_sot(
     n_rival,
     peso_equipo=0.60,
     peso_rival=0.40,
-):
-    return probabilidad_over_sot(
+    pct_historico_equipo=None,
+    racha_actual_equipo=None,
+    racha_max_equipo=None,
+    pct_historico_rival=None,
+    racha_actual_rival=None,
+    racha_max_rival=None,
+):   
+    prob_base = probabilidad_over_sot(
         sot_equipo,
         sot_rival,
         linea,
@@ -1886,6 +2012,45 @@ def calcular_proyeccion_individual_sot(
         peso_equipo,
         peso_rival,
     )
+        
+    if (
+        pct_historico_equipo is None or
+        racha_actual_equipo is None or
+        racha_max_equipo is None
+    ):
+        return prob_base
+    
+    score_equipo = calcular_score_regularidad(
+        pct_historico_equipo,
+        racha_actual_equipo,
+        racha_max_equipo,
+    )
+    
+    if (
+        pct_historico_rival is not None and
+        racha_actual_rival is not None and
+        racha_max_rival is not None
+    ):
+        score_rival = calcular_score_regularidad(
+            pct_historico_rival,
+            racha_actual_rival,
+            racha_max_rival,
+        )
+        score_combinado = 0.60 * score_equipo + 0.40 * score_rival
+    else:
+        score_combinado = score_equipo
+    
+    cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
+    n_mix = min(n_equipo, n_rival)
+    
+    prob_final = ajustar_prob_por_regularidad(
+        prob_base,
+        score_combinado,
+        cv_mix,
+        n_mix,
+    )
+    
+    return prob_final
 
 def normalizar_metrica(pct, racha_act, racha_max):   
     componente_pct = 0.60 * pct
@@ -2010,6 +2175,26 @@ def calcular_prediccion_marca_recibe(
     prob_marca_local = probabilidad_poisson(lambda_local) * 100
     prob_marca_visitante = probabilidad_poisson(lambda_visitante) * 100   
     
+    score_regularidad_local = calcular_score_regularidad_goles(
+        pct_marca=marca_gol_local_pct,
+        pct_recibe=no_recibe_gol_local_pct,
+        racha_marca=racha_marca_local,
+        racha_no_marca=racha_no_marca_local,
+        racha_recibe=racha_recibe_local,
+        racha_no_recibe=racha_no_recibe_local,
+    )
+
+    score_regularidad_visitante = calcular_score_regularidad_goles(
+        pct_marca=marca_gol_visitante_pct,
+        pct_recibe=no_recibe_gol_visitante_pct,
+        racha_marca=racha_marca_visitante,
+        racha_no_marca=racha_no_marca_visitante,
+        racha_recibe=racha_recibe_visitante,
+        racha_no_recibe=racha_no_recibe_visitante,
+    )
+
+    score_regularidad_total = 0.5 * score_regularidad_local + 0.5 * score_regularidad_visitante
+
     return {
         "Gana Local": prob_1x2["1"],
         "Empate": prob_1x2["X"],
@@ -2022,6 +2207,9 @@ def calcular_prediccion_marca_recibe(
         "BTTS": prob_btts_val,
         "Over 1.5": round(over_15, 1),
         "Over 2.5": round(over_25, 1),
+        "Score Regularidad Local": score_regularidad_local,
+        "Score Regularidad Visitante": score_regularidad_visitante,
+        "Score Regularidad Total": score_regularidad_total,
     }
     
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
@@ -2736,26 +2924,73 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             25.5, 26.5, 27.5, 28.5, 29.5, 30.5, 31.5,
         ]
 
-        rows_shots_tot = [
-            construir_fila_over_total(
-                linea=L,
-                lambda_total=lambda_shots_total,
-                df_local=df_local,
-                df_visitante=df_visitante,
-                col_local="shots_favor",
-                col_visitante="shots_contra",
-                n=10,
-                incluir_igual=False,
-                # Nuevos parámetros para probabilidad basada en proyección
-                proy_rem_local=metricas["Remates_att_local"],
-                proy_rem_vis=metricas["Remates_att_vis"],
-                cv_rem_local=metricas["Remates_cv_local"],
-                cv_rem_vis=metricas["Remates_cv_vis"],
-                n_rem_local=min(len(df_local), 10),
-                n_rem_vis=min(len(df_visitante), 10),
+        rows_shots_tot = []
+            
+        for L in lineas_shots_total:
+            hist_local = calcular_racha_supera_linea_total_partido(
+                df_local, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
             )
-            for L in lineas_shots_total
-        ]
+            hist_vis = calcular_racha_supera_linea_total_partido(
+                df_visitante, "shots_favor", "shots_contra", L, n=10, incluir_igual=False
+            )
+
+            lambda_rem_total = metricas["Remates_att_local"] + metricas["Remates_att_vis"]
+            cv_rem_local = metricas["Remates_cv_local"]
+            cv_rem_vis = metricas["Remates_cv_vis"]
+            cv_mix = 0.6 * cv_rem_local + 0.4 * cv_rem_vis
+            factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
+            lambda_ajustado = lambda_rem_total * factor_vol
+            
+            n_rem_local = min(len(df_local), 10)
+            n_rem_vis = min(len(df_visitante), 10)
+            penalizacion_muestra = 0.0
+            if n_rem_local < 10:
+                penalizacion_muestra += (10 - n_rem_local) * 0.005
+            if n_rem_vis < 10:
+                penalizacion_muestra += (10 - n_rem_vis) * 0.003
+            penalizacion_muestra = min(0.15, penalizacion_muestra)
+            
+            from math import floor
+            k_linea = int(floor(L))
+            p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
+            p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
+            prob_base = round(p_over * 100, 1)
+
+            score_local = calcular_score_regularidad(
+                hist_local["pct_n"],
+                hist_local["racha_actual"],
+                hist_local["racha_max"],
+            )
+            score_vis = calcular_score_regularidad(
+                hist_vis["pct_n"],
+                hist_vis["racha_actual"],
+                hist_vis["racha_max"],
+            )
+            score_combinado = 0.5 * score_local + 0.5 * score_vis
+
+            n_mix = min(n_rem_local, n_rem_vis)
+            proyeccion = ajustar_prob_por_regularidad(
+                prob_base,
+                score_combinado,
+                cv_mix,
+                n_mix,
+            )
+
+            under = round(100 - prob_base, 1)
+
+            rows_shots_tot.append([
+                L,
+                prob_base,  
+                under,
+                hist_local["pct_txt"],
+                hist_local["racha_actual_txt"],
+                hist_local["racha_max_txt"],
+                hist_vis["pct_txt"],
+                hist_vis["racha_actual_txt"],
+                hist_vis["racha_max_txt"],
+                proyeccion,  
+            ])
+    
 
         df_shots_tot = pd.DataFrame(
             rows_shots_tot,
@@ -2798,7 +3033,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
 
             proyeccion_local = calcular_proyeccion_individual(
                 proy_equipo=metricas["Remates_att_local"],
-                proy_rival=metricas["Remates_contra_vis"],  
+                proy_rival=metricas["Remates_contra_vis"],
                 linea=L,
                 cv_equipo=metricas["Remates_cv_local"],
                 cv_rival=metricas["Remates_cv_vis"],
@@ -2806,12 +3041,18 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 n_rival=min(len(df_visitante), 10),
                 peso_equipo=0.60,
                 peso_rival=0.40,
+                pct_historico_equipo=hist_local["pct_n"],
+                racha_actual_equipo=hist_local["racha_actual"],
+                racha_max_equipo=hist_local["racha_max"],
+                pct_historico_rival=hist_vis_concede["pct_n"],
+                racha_actual_rival=hist_vis_concede["racha_actual"],
+                racha_max_rival=hist_vis_concede["racha_max"],
             )
 
             
             proyeccion_vis = calcular_proyeccion_individual(
                 proy_equipo=metricas["Remates_att_vis"],
-                proy_rival=metricas["Remates_contra_local"],  
+                proy_rival=metricas["Remates_contra_local"],
                 linea=L,
                 cv_equipo=metricas["Remates_cv_vis"],
                 cv_rival=metricas["Remates_cv_local"],
@@ -2819,6 +3060,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 n_rival=min(len(df_local), 10),
                 peso_equipo=0.60,
                 peso_rival=0.40,
+                pct_historico_equipo=hist_vis["pct_n"],
+                racha_actual_equipo=hist_vis["racha_actual"],
+                racha_max_equipo=hist_vis["racha_max"],
+                pct_historico_rival=hist_local_concede["pct_n"],
+                racha_actual_rival=hist_local_concede["racha_actual"],
+                racha_max_rival=hist_local_concede["racha_max"],
             )
                         
             rows_shots_eq.append([
@@ -2866,16 +3113,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         rows_sot_tot = []
 
         for L in lineas_sot_total:
-            under, over = poisson_prob_over_under(lambda_sot_total, L, max_k=10)
-
             hist_local = calcular_racha_supera_linea_total_partido(
                 df_local, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
             )
             hist_vis = calcular_racha_supera_linea_total_partido(
                 df_visitante, "a_puerta_favor", "a_puerta_contra", L, n=10, incluir_igual=False
             )
-            
-            from math import floor
 
             lambda_sot_total = metricas["SoT_local"] + metricas["SoT_vis"]
             cv_sot_local = metricas.get("Remates_cv_local", 0.3)
@@ -2893,22 +3136,45 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 penalizacion_muestra += (10 - n_sot_vis) * 0.003
             penalizacion_muestra = min(0.15, penalizacion_muestra)
             
+            from math import floor
             k_linea = int(floor(L))
             p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
             p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
-            proyeccion = round(p_over * 100, 1)
+            prob_base = round(p_over * 100, 1)
+
+            score_local = calcular_score_regularidad(
+                hist_local["pct_n"],
+                hist_local["racha_actual"],
+                hist_local["racha_max"],
+            )
+            score_vis = calcular_score_regularidad(
+                hist_vis["pct_n"],
+                hist_vis["racha_actual"],
+                hist_vis["racha_max"],
+            )
+            score_combinado = 0.5 * score_local + 0.5 * score_vis
+
+            n_mix = min(n_sot_local, n_sot_vis)
+            proyeccion = ajustar_prob_por_regularidad(
+                prob_base,
+                score_combinado,
+                cv_mix,
+                n_mix,
+            )
+
+            under = round(100 - prob_base, 1)
 
             rows_sot_tot.append([
                 L,
-                over,
-                under,                
+                prob_base,  
+                under,
                 hist_local["pct_txt"],
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
                 hist_vis["pct_txt"],
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
-                proyeccion,
+                proyeccion, 
             ])
 
         df_sot_tot = pd.DataFrame(
@@ -2957,6 +3223,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 n_rival=min(len(df_visitante), 10),
                 peso_equipo=0.60,
                 peso_rival=0.40,
+                pct_historico_equipo=hist_local["pct_n"],
+                racha_actual_equipo=hist_local["racha_actual"],
+                racha_max_equipo=hist_local["racha_max"],
+                pct_historico_rival=hist_vis_concede["pct_n"],
+                racha_actual_rival=hist_vis_concede["racha_actual"],
+                racha_max_rival=hist_vis_concede["racha_max"],
             )
             
             proyeccion_vis = calcular_proyeccion_individual_sot(
@@ -2969,6 +3241,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 n_rival=min(len(df_local), 10),
                 peso_equipo=0.60,
                 peso_rival=0.40,
+                pct_historico_equipo=hist_vis["pct_n"],
+                racha_actual_equipo=hist_vis["racha_actual"],
+                racha_max_equipo=hist_vis["racha_max"],
+                pct_historico_rival=hist_local_concede["pct_n"],
+                racha_actual_rival=hist_local_concede["racha_actual"],
+                racha_max_rival=hist_local_concede["racha_max"],
             )
 
             rows_sot_eq.append([
