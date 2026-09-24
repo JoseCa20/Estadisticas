@@ -1540,14 +1540,17 @@ def calcular_score_regularidad(pct_historico, racha_actual, racha_max):
 
 def calcular_score_regularidad_goles(pct_marca, pct_recibe, racha_marca, racha_no_marca, racha_recibe, racha_no_recibe):
     racha_marca_norm = min(100.0, (racha_marca / 5.0) * 100.0)
+    racha_no_recibe_norm = min(100.0, (racha_no_recibe / 5.0) * 100.0)
     
     score_ofensivo = (
-        0.50 * pct_marca +
-        0.30 * racha_marca_norm +
-        0.20 * pct_marca  
+        0.70 * pct_marca +
+        0.30 * racha_marca_norm 
     )
     
-    score_defensivo = pct_recibe  
+    score_defensivo = (
+        0.70 * pct_recibe +
+        0.30 * racha_no_recibe_norm
+    )
     
     score_combinado = 0.60 * score_ofensivo + 0.40 * score_defensivo
     
@@ -1582,8 +1585,8 @@ def ajustar_prob_goles_por_regularidad(
     score_regularidad,
     cv_goles,
     n_partidos,
-    peso_regularidad_max=0.60,
-    peso_regularidad_min=0.25,
+    peso_regularidad_max=0.40,
+    peso_regularidad_min=0.15,
 ):   
     confianza = score_regularidad / 100.0
     
@@ -2053,7 +2056,7 @@ def calcular_proyeccion_individual_sot(
     return prob_final
 
 def normalizar_metrica(pct, racha_act, racha_max):   
-    componente_pct = 0.60 * pct
+    componente_pct = 0.70 * pct
     
     if racha_max == 0:
         componente_racha = 0.0
@@ -2061,7 +2064,7 @@ def normalizar_metrica(pct, racha_act, racha_max):
         componente_racha = 0.30 * ((racha_act / racha_max)*100)
     
     if racha_max > 0 and racha_act == racha_max:
-        componente_bono = 0.10 * 100
+        componente_bono = 0.05 * 100
     else:
         componente_bono = 0.0
     
@@ -2121,6 +2124,7 @@ def calcular_prediccion_marca_recibe(
     recibe_gol_visitante_pct, racha_recibe_visitante, max_racha_recibe_visitante,
     no_marca_gol_visitante_pct, racha_no_marca_visitante, max_racha_no_marca_visitante,
     no_recibe_gol_visitante_pct, racha_no_recibe_visitante, max_racha_no_recibe_visitante,
+    df_local = None, df_visitante = None,
 ):
     from math import log
     
@@ -2194,6 +2198,49 @@ def calcular_prediccion_marca_recibe(
     )
 
     score_regularidad_total = 0.5 * score_regularidad_local + 0.5 * score_regularidad_visitante
+    
+    goles_local = pd.to_numeric(df_local["goles_local"], errors="coerce").dropna().tail(10)
+    goles_visitante = pd.to_numeric(df_visitante["goles_visitante"], errors="coerce").dropna().tail(10)
+
+    cv_local = goles_local.std() / goles_local.mean() if len(goles_local) > 1 and goles_local.mean() > 0 else 0.3
+    cv_visitante = goles_visitante.std() / goles_visitante.mean() if len(goles_visitante) > 1 and goles_visitante.mean() > 0 else 0.3
+    cv_goles_mix = 0.5 * cv_local + 0.5 * cv_visitante
+    n_partidos = min(len(goles_local), len(goles_visitante), 10)
+
+    btts_ajustado = ajustar_prob_goles_por_regularidad(
+        prob_btts_val,
+        score_regularidad_total,
+        cv_goles_mix,
+        n_partidos,
+    )
+
+    over_15_ajustado = ajustar_prob_goles_por_regularidad(
+        over_15,
+        score_regularidad_total,
+        cv_goles_mix,
+        n_partidos,
+    )
+
+    over_25_ajustado = ajustar_prob_goles_por_regularidad(
+        over_25,
+        score_regularidad_total,
+        cv_goles_mix,
+        n_partidos,
+    )
+
+    marca_local_ajustado = ajustar_prob_goles_por_regularidad(
+        prob_marca_local,
+        score_regularidad_local,
+        cv_local,
+        n_partidos,
+    )
+
+    marca_visitante_ajustado = ajustar_prob_goles_por_regularidad(
+        prob_marca_visitante,
+        score_regularidad_visitante,
+        cv_visitante,
+        n_partidos,
+    )
 
     return {
         "Gana Local": prob_1x2["1"],
@@ -2202,14 +2249,11 @@ def calcular_prediccion_marca_recibe(
         "1X": prob_1x2["1X"],
         "12": prob_1x2["12"],
         "X2": prob_1x2["X2"],
-        "Marca Local": round(prob_marca_local, 1),
-        "Marca Visitante": round(prob_marca_visitante, 1),
-        "BTTS": prob_btts_val,
-        "Over 1.5": round(over_15, 1),
-        "Over 2.5": round(over_25, 1),
-        "Score Regularidad Local": score_regularidad_local,
-        "Score Regularidad Visitante": score_regularidad_visitante,
-        "Score Regularidad Total": score_regularidad_total,
+        "Marca Local": round(marca_local_ajustado, 1),
+        "Marca Visitante": round(marca_visitante_ajustado, 1),
+        "BTTS": round(btts_ajustado, 1),
+        "Over 1.5": round(over_15_ajustado, 1),
+        "Over 2.5": round(over_25_ajustado, 1),
     }
     
 # === MÉTRICAS AVANZADAS: ATAQUE, DEFENSA, REMATES Y SOT ===
@@ -3297,6 +3341,18 @@ def prob_a_texto_con_cuota(p):
 def formatear_y_resaltar(df, col_prob, umbrales, col_extra=None):
     umbral_verde, umbral_azul = umbrales
     df_fmt = df.reset_index(drop=True).copy()
+    
+    if "Métrica" in df.columns:
+        primera_metrica = df["Métrica"].iloc[0].lower()
+        
+        if "marca" in primera_metrica:
+            umbral_verde, umbral_azul = 70, 60
+        elif "btts" in primera_metrica:
+            umbral_verde, umbral_azul = 65, 55
+        elif "over 1.5" in primera_metrica:
+            umbral_verde, umbral_azul = 70, 60
+        elif "over 2.5" in primera_metrica:
+            umbral_verde, umbral_azul = 65, 55
 
     # Línea numérica
     if "Línea" in df_fmt.columns and pd.api.types.is_numeric_dtype(df_fmt["Línea"]):
@@ -4350,6 +4406,9 @@ if equipo_local_nombre and equipo_visitante_nombre:
             metricas_visitante["no_recibe_pct"],
             metricas_visitante["no_recibe_racha"],
             metricas_visitante["no_recibe_max"],
+            
+            df_local= df_local_all,
+            df_visitante= df_visitante_all,
         )
         
         rows_prediccion = [
@@ -4384,13 +4443,13 @@ if equipo_local_nombre and equipo_visitante_nombre:
             st.markdown("### ⚽ Goles y BTTS")
             df_goles = df_prediccion.iloc[6:9].copy()
             df_goles.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_goles, "Prob. %", umbrales=(80, 75)))
+            st.table(formatear_y_resaltar(df_goles, "Prob. %", umbrales=(70, 60)))
         
         with col_pred_3:
             st.markdown("### 📈 Overs")
             df_overs = df_prediccion.iloc[9:11].copy()
             df_overs.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_overs, "Prob. %", umbrales=(80, 75)))
+            st.table(formatear_y_resaltar(df_overs, "Prob. %", umbrales=(65, 55)))
     
     # Definición de las columnas a mostrar basado en el rango seleccionado
     cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
