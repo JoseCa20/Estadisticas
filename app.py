@@ -3052,7 +3052,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 columnas_max=["Local Máx", "Visitante Máx"],
                 col_prob=["Over %", "Proyección %"],
                 col_extra="Under %",
-                umbrales=(80, 75),
+                umbrales=(75, 60),
             )
         )
 
@@ -3142,7 +3142,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 columnas_max=["Máx Local", "Máx Visitante"],
                 col_prob=["Prob. Local %", "Proy Local"],
                 col_extra=["Prob. Visitante %", "Proy Vis"],
-                umbrales=(80, 75)
+                umbrales=(75, 60)
             )
         )
 
@@ -3237,7 +3237,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 columnas_max=["Local Máx", "Visitante Máx"],
                 col_prob=["Over %", "Proyección %"],
                 col_extra="Under %",
-                umbrales=(80, 75)
+                umbrales=(75, 60)
             )
         )
 
@@ -3323,7 +3323,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 columnas_max=["Máx Local", "Máx Visitante"],
                 col_prob=["Prob. Local %", "Proy Local"],
                 col_extra=["Prob. Visitante %", "Proy Vis"],
-                umbrales=(80, 75)
+                umbrales=(75, 60)
             )
         )
         
