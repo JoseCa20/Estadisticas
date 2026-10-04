@@ -4103,7 +4103,7 @@ with col2:
 if equipo_local_nombre and equipo_visitante_nombre:
     # --- 1. CONFIGURACIÓN DEL ESTADO DE SESIÓN ---
     if 'partidos_rango' not in st.session_state:
-        st.session_state.partidos_rango = 10 # Valor inicial
+        st.session_state.partidos_rango = 5
 
     # --- 2. CARGA DE DATOS ---
     # Cargamos siempre los 10 para que los dataframes df_local_all y df_visitante_all
