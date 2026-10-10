@@ -4501,7 +4501,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
             st.markdown("### 🎯 Resultado y Dobles")
             df_1x2 = df_prediccion.iloc[0:6].copy()
             df_1x2.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_1x2, "Prob. %", umbrales=(80, 75)))
+            st.table(formatear_y_resaltar(df_1x2, "Prob. %", umbrales=(70, 60)))
         
         with col_pred_2:
             st.markdown("### ⚽ Goles y BTTS")
