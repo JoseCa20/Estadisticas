@@ -13,6 +13,8 @@ from partidos_manager import (
     inicializar_lista_partidos,
     mostrar_boton_agregar_partido
 )
+from contexto_liga import generar_tabla_contexto
+from contexto_liga import convertir_tabla_a_imagen
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -2905,7 +2907,7 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
     })         
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
-def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante):
+def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante, tabla_contexto = None):
     if metricas is None:
         return
 
@@ -3209,6 +3211,46 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 umbrales=(70, 60)
             )
         )
+  
+    if tabla_contexto is not None and not tabla_contexto.empty:
+
+        mercados_multiples_lineas = [
+            "Remates totales",
+            "Remates local",
+            "Remates visitante",
+            "A puerta totales",
+            "A puerta local",
+            "A puerta visitante"
+        ]
+
+        tabla_multiples_lineas = tabla_contexto[
+            tabla_contexto["Mercado"].isin(mercados_multiples_lineas)
+        ].copy()
+
+        columnas_multiples_lineas = [
+            "Mercado",
+            "Lambda base",
+            "Factor contexto",
+            "Lambda ajustado",
+            "Ajuste",
+            "Ajuste tabla",
+            "Señal"
+        ]
+
+        columnas_existentes = [
+            col for col in columnas_multiples_lineas
+            if col in tabla_multiples_lineas.columns
+        ]
+
+        tabla_multiples_lineas = tabla_multiples_lineas[columnas_existentes]
+
+        fig_multiples_lineas = convertir_tabla_a_imagen(
+            tabla_multiples_lineas,
+            "Contexto de liga: remates y tiros a puerta"
+        )
+
+        if fig_multiples_lineas is not None:
+            st.pyplot(fig_multiples_lineas)
 
     # === Tabla 6 y 7 en la misma fila ===
     col6, col7 = st.columns(2)
@@ -4193,7 +4235,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
         equipo_visitante_archivo=equipo_visitante_nombre,
     )
     
-    prob_tablas = {}
+    prob_tablas = {} 
+    
+    posicion_local = None
+    posicion_visitante = None   
 
     if metricas_avanzadas is not None:
         lambda_L = metricas_avanzadas["lambda_local_new"]
@@ -4218,6 +4263,8 @@ if equipo_local_nombre and equipo_visitante_nombre:
             clave_under = f"Under_{L}_partido"
             prob_tablas[clave_over] = o
             prob_tablas[clave_under] = u
+        prob_tablas["Over 1.5 Goles"] = prob_tablas["Over_1.5_partido"]
+        prob_tablas["Over 2.5 Goles"] = prob_tablas["Over_2.5_partido"]
 
         # 3) Goles por equipo y BTTS (Tabla 3)
         for L in [0.5, 1.5]:
@@ -4227,6 +4274,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
             prob_tablas[f"Local_under_{L}"] = uL
             prob_tablas[f"Visitante_over_{L}"] = oV
             prob_tablas[f"Visitante_under_{L}"] = uV
+            
+            if L == 0.5:
+                prob_tablas["Marca Local"] = oL
+                prob_tablas["Marca Visitante"] = oV
 
         btts = prob_btts(lambda_L, lambda_V, max_goals=8)
         prob_tablas["BTTS"] = btts
@@ -4326,6 +4377,16 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Hits_Visitante_U10"] = metricas_avanzadas["HitsSuperaRemates10V_txt"]
         prob_tablas["Porc_Hits_L"] = metricas_avanzadas["PctSuperaRemates10L_txt"]
         prob_tablas["Porc_Hits_V"] = metricas_avanzadas["PctSuperaRemates10V_txt"]
+        
+        tabla_contexto = generar_tabla_contexto(
+            prob_base = prob_tablas, 
+            metricas = metricas_avanzadas,
+            equipo_local_archivo = equipo_local_nombre,
+            equipo_visitante_archivo = equipo_visitante_nombre,
+            n_partidos = 10,
+            posicion_local = posicion_local,
+            posicion_visitante = posicion_visitante
+        )      
 
         # Peligrosidad y Fragilidad (mantener cálculo tradicional)
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))
@@ -4385,7 +4446,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
             prob_tablas,
         )    
 
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V, df_local_all, df_visitante_all)    
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V, df_local_all, df_visitante_all, tabla_contexto)    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")   
     
@@ -4513,7 +4574,50 @@ if equipo_local_nombre and equipo_visitante_nombre:
             st.markdown("### 📈 Overs")
             df_overs = df_prediccion.iloc[9:11].copy()
             df_overs.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_overs, "Prob. %", umbrales=(65, 55)))
+            st.table(formatear_y_resaltar(df_overs, "Prob. %", umbrales=(65, 55)))     
+
+        if tabla_contexto is not None and not tabla_contexto.empty:
+
+            mercados_una_linea = [
+                "Gana Local",
+                "Empate",
+                "Gana visitante",
+                "Marca local",
+                "Marca visitante",
+                "BTTS",
+                "Over 1.5 goles",
+                "Over 2.5 goles"
+            ]
+
+            tabla_una_linea = tabla_contexto[
+                tabla_contexto["Mercado"].isin(mercados_una_linea)
+            ].copy()
+
+            columnas_una_linea = [
+                "Mercado",
+                "Prob. base",
+                "Factor contexto",
+                "Ajuste",
+                "Ajuste tabla",
+                "Prob. final",
+                "Diferencia",
+                "Señal"
+            ]
+
+            columnas_existentes = [
+                col for col in columnas_una_linea
+                if col in tabla_una_linea.columns
+            ]
+
+            tabla_una_linea = tabla_una_linea[columnas_existentes]
+
+            fig_una_linea = convertir_tabla_a_imagen(
+                tabla_una_linea,
+                "Contexto de liga: mercados de una línea"
+            )
+
+            if fig_una_linea is not None:
+                st.pyplot(fig_una_linea)
     
     # Definición de las columnas a mostrar basado en el rango seleccionado
     cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
