@@ -13,8 +13,7 @@ from partidos_manager import (
     inicializar_lista_partidos,
     mostrar_boton_agregar_partido
 )
-from contexto_liga import (generar_tabla_contexto, convertir_tabla_a_imagen, aplicar_contexto_goles,
-                           preparar_contexto_remates_sot)
+from contexto_liga import (aplicar_contexto_goles, preparar_contexto_remates_sot)
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -2917,7 +2916,7 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
     })         
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
-def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante, tabla_contexto = None,
+def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante,
                              equipo_local_archivo=None, equipo_visitante_archivo=None):
     
     if metricas is None:
@@ -4447,17 +4446,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
         prob_tablas["Hits_Local_U10"] = metricas_avanzadas["HitsSuperaRemates10L_txt"]
         prob_tablas["Hits_Visitante_U10"] = metricas_avanzadas["HitsSuperaRemates10V_txt"]
         prob_tablas["Porc_Hits_L"] = metricas_avanzadas["PctSuperaRemates10L_txt"]
-        prob_tablas["Porc_Hits_V"] = metricas_avanzadas["PctSuperaRemates10V_txt"]
-        
-        tabla_contexto = generar_tabla_contexto(
-            prob_base = prob_tablas, 
-            metricas = metricas_avanzadas,
-            equipo_local_archivo = equipo_local_nombre,
-            equipo_visitante_archivo = equipo_visitante_nombre,
-            n_partidos = 10,
-            posicion_local = posicion_local,
-            posicion_visitante = posicion_visitante
-        )      
+        prob_tablas["Porc_Hits_V"] = metricas_avanzadas["PctSuperaRemates10V_txt"]           
 
         # Peligrosidad y Fragilidad (mantener cálculo tradicional)
         xgsot_3_l = calcular_xg_por_sot(df_local_all.tail(3))

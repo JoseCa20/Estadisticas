@@ -13,11 +13,46 @@ import os
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
+from scipy.stats import poisson, skellam
 
 RUTA_STATS = "new-stats"
 RUTA_EQUIPOS_LIGAS = "enlaces_equipos.xlsx"
+
+def _numero_contexto(valor):
+    try:
+        numero = float(valor)
+
+        if not np.isfinite(numero):
+            return None
+
+        return numero
+
+    except (TypeError, ValueError):
+        return None
+
+
+def _leer_catalogo_contexto():
+    df = pd.read_excel(RUTA_EQUIPOS_LIGAS)
+    df = normalizar_columnas_basicas(df)
+
+    requeridas = {"equipo", "division", "analizar"}
+    faltantes = requeridas - set(df.columns)
+
+    if faltantes:
+        raise ValueError(
+            f"Faltan columnas en {RUTA_EQUIPOS_LIGAS}: "
+            f"{', '.join(sorted(faltantes))}"
+        )
+
+    for columna in requeridas:
+        df[columna] = (
+            df[columna]
+            .astype("string")
+            .str.strip()
+            .str.lower()
+        )
+
+    return df
 
 def normalizar_columnas_basicas(df):
     """
@@ -56,24 +91,6 @@ def obtener_division_equipo(equipo_archivo):
         return None
 
     return str(fila["division"].iloc[0])
-
-
-def st_cache_data(func):
-    """
-    Cache simple en memoria para no leer repetidamente el Excel.
-    """
-    cache = {}
-
-    def wrapper(*args):
-        if args in cache:
-            return cache[args]
-
-        resultado = func(*args)
-        cache[args] = resultado
-        return resultado
-
-    return wrapper
-
 
 def cargar_equipos_division(division):
     """
@@ -336,723 +353,6 @@ def obtener_factor_enfrentamiento(perfil_atacante, perfil_defensivo):
         (perfil_atacante, perfil_defensivo),
         1.00
     )
-    
-def convertir_tabla_a_imagen(df, titulo):
-    """
-    Convierte un DataFrame en una figura de Matplotlib
-    para mostrarla en Streamlit como imagen estática.
-    """
-
-    if df is None or df.empty:
-        return None
-
-    fig, ax = plt.subplots(
-        figsize=(16, max(3, 0.55 * (len(df) + 1))),
-        dpi=150
-    )
-
-    ax.axis("off")
-
-    tabla = ax.table(
-        cellText=df.values,
-        colLabels=df.columns,
-        cellLoc="center",
-        loc="center"
-    )
-
-    tabla.auto_set_font_size(False)
-    tabla.set_fontsize(9)
-    tabla.scale(1, 1.6)
-
-    # Encabezado
-    for j in range(len(df.columns)):
-        celda = tabla[(0, j)]
-        celda.set_facecolor("#1f4e79")
-        celda.set_text_props(color="white", weight="bold")
-
-    # Filas alternadas
-    for i in range(1, len(df) + 1):
-        color = "#ffffff" if i % 2 != 0 else "#eaf2f8"
-
-        for j in range(len(df.columns)):
-            tabla[(i, j)].set_facecolor(color)
-
-    ax.set_title(
-        titulo,
-        fontsize=14,
-        fontweight="bold",
-        pad=20
-    )
-
-    plt.tight_layout()
-
-    return fig
-
-def ajustar_mercado_1x2(
-    prob_local,
-    prob_empate,
-    prob_visitante,
-    factor_local,
-    factor_visitante
-):
-    """
-    Ajusta el mercado 1X2 de forma coherente.
-
-    Sube o baja la probabilidad de cada resultado según el factor
-    de contexto y luego normaliza para que la suma sea 100.
-    """
-
-    if None in [prob_local, prob_empate, prob_visitante]:
-        return None, None, None
-
-    prob_local_ajustada = prob_local * factor_local
-    prob_visitante_ajustada = prob_visitante * factor_visitante
-
-    prob_empate_ajustada = prob_empate
-
-    total = (
-        prob_local_ajustada
-        + prob_empate_ajustada
-        + prob_visitante_ajustada
-    )
-
-    if total <= 0:
-        return None, None, None
-
-    prob_local_final = prob_local_ajustada / total * 100
-    prob_empate_final = prob_empate_ajustada / total * 100
-    prob_visitante_final = prob_visitante_ajustada / total * 100
-
-    return (
-        round(prob_local_final, 1),
-        round(prob_empate_final, 1),
-        round(prob_visitante_final, 1)
-    )
-
-
-
-# ==========================================================
-# 2. PERCENTILES DEL PARTIDO
-# ==========================================================
-
-def obtener_percentiles_partido(
-    metricas,
-    equipo_local_archivo,
-    equipo_visitante_archivo,
-    n_partidos = 10
-):
-    """
-    Calcula los percentiles de liga para local y visitante.
-    """
-
-    division_local = obtener_division_equipo(equipo_local_archivo)
-    division_visitante = obtener_division_equipo(equipo_visitante_archivo)
-
-    df_liga_local = cargar_resumen_division(
-        division_local,
-        n_partidos
-    )
-
-    df_liga_visitante = cargar_resumen_division(
-        division_visitante,
-        n_partidos
-    )
-
-    if df_liga_local.empty or df_liga_visitante.empty:
-        return {}
-
-    df_liga_local = df_liga_local.copy()
-    df_liga_visitante = df_liga_visitante.copy()
-
-    for df in [df_liga_local, df_liga_visitante]:
-        for col in [
-            "shots_favor",
-            "shots_contra",
-            "a_puerta_favor",
-            "a_puerta_contra"
-        ]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    percentiles = {}
-
-    # ------------------------------------------------------
-    # Local
-    # ------------------------------------------------------
-
-    percentiles["remates_local"] = calcular_percentil_liga(
-        metricas.get("Remates_att_local"),
-        df_liga_local["shots_favor"]
-    )
-
-    percentiles["remates_concede_local"] = calcular_percentil_liga(
-        metricas.get("Remates_contra_local"),
-        df_liga_local["shots_contra"]
-    )
-
-    percentiles["sot_local"] = calcular_percentil_liga(
-        metricas.get("SoT_local"),
-        df_liga_local["a_puerta_favor"]
-    )
-
-    sot_contra_local = metricas.get("SoT_contra_local")
-
-    if sot_contra_local is None:
-        fila_local = df_liga_local[
-            df_liga_local["equipo"] == equipo_local_archivo
-        ]
-
-        if not fila_local.empty:
-            sot_contra_local = fila_local["a_puerta_contra"].iloc[0]
-
-    percentiles["sot_concede_local"] = calcular_percentil_liga(
-        sot_contra_local,
-        df_liga_local["a_puerta_contra"]
-    )
-
-    # ------------------------------------------------------
-    # Visitante
-    # ------------------------------------------------------
-
-    percentiles["remates_visitante"] = calcular_percentil_liga(
-        metricas.get("Remates_att_vis"),
-        df_liga_visitante["shots_favor"]
-    )
-
-    percentiles["remates_concede_visitante"] = calcular_percentil_liga(
-        metricas.get("Remates_contra_vis"),
-        df_liga_visitante["shots_contra"]
-    )
-
-    percentiles["sot_visitante"] = calcular_percentil_liga(
-        metricas.get("SoT_vis"),
-        df_liga_visitante["a_puerta_favor"]
-    )
-
-    sot_contra_vis = metricas.get("SoT_contra_vis")
-
-    if sot_contra_vis is None:
-        fila_vis = df_liga_visitante[
-            df_liga_visitante["equipo"] == equipo_visitante_archivo
-        ]
-
-        if not fila_vis.empty:
-            sot_contra_vis = fila_vis["a_puerta_contra"].iloc[0]
-
-    percentiles["sot_concede_visitante"] = calcular_percentil_liga(
-        sot_contra_vis,
-        df_liga_visitante["a_puerta_contra"]
-    )
-
-    return percentiles
-
-
-
-def obtener_perfiles_partido(percentiles):
-    """
-    Convierte percentiles en perfiles Bajo, Medio o Alto.
-    """
-
-    perfiles = {}
-
-    claves = [
-        "remates_local",
-        "remates_concede_local",
-        "sot_local",
-        "sot_concede_local",
-        "remates_visitante",
-        "remates_concede_visitante",
-        "sot_visitante",
-        "sot_concede_visitante"
-    ]
-
-    for clave in claves:
-        perfiles[clave] = clasificar_perfil(
-            percentiles.get(clave)
-        )
-
-    return perfiles
-
-
-# ==========================================================
-# 3. FACTORES DE CONTEXTO
-# ==========================================================
-
-def obtener_factores_contexto(perfiles):
-    """
-    Calcula los factores de contexto para cada mercado.
-
-    Los factores se aplican sobre los lambdas.
-    """
-
-    perfil_remates_local = perfiles["remates_local"]
-    perfil_remates_concede_local = perfiles["remates_concede_local"]
-    perfil_sot_local = perfiles["sot_local"]
-    perfil_sot_concede_local = perfiles["sot_concede_local"]
-
-    perfil_remates_visitante = perfiles["remates_visitante"]
-    perfil_remates_concede_visitante = perfiles["remates_concede_visitante"]
-    perfil_sot_visitante = perfiles["sot_visitante"]
-    perfil_sot_concede_visitante = perfiles["sot_concede_visitante"]
-
-    # ------------------------------------------------------
-    # Remates
-    # ------------------------------------------------------
-
-    factor_remates_local = obtener_factor_enfrentamiento(
-        perfil_remates_local,
-        perfil_remates_concede_visitante
-    )
-
-    factor_remates_visitante = obtener_factor_enfrentamiento(
-        perfil_remates_visitante,
-        perfil_remates_concede_local
-    )
-
-    factor_remates_totales = round(
-        (factor_remates_local + factor_remates_visitante) / 2,
-        3
-    )
-
-    factor_sot_local = obtener_factor_enfrentamiento(
-        perfil_sot_local,
-        perfil_sot_concede_visitante
-    )
-
-    factor_sot_visitante = obtener_factor_enfrentamiento(
-        perfil_sot_visitante,
-        perfil_sot_concede_local
-    )
-
-    factor_sot_totales = round(
-        (factor_sot_local + factor_sot_visitante) / 2,
-        3
-    )
-
-    factor_peligro_local = factor_sot_local
-    factor_peligro_visitante = factor_sot_visitante
-
-    factor_btts = round(
-        (factor_peligro_local + factor_peligro_visitante) / 2,
-        3
-    )
-
-    factor_over_goles = factor_btts
-
-    return {
-        "remates_local": factor_remates_local,
-        "remates_visitante": factor_remates_visitante,
-        "remates_totales": factor_remates_totales,
-        "sot_local": factor_sot_local,
-        "sot_visitante": factor_sot_visitante,
-        "sot_totales": factor_sot_totales,
-        "peligro_local": factor_peligro_local,
-        "peligro_visitante": factor_peligro_visitante,
-        "btts": factor_btts,
-        "over_goles": factor_over_goles
-    }
-
-
-# ==========================================================
-# 4. AJUSTE DE MERCADOS DE UNA LÍNEA
-# ==========================================================
-
-def ajustar_probabilidad_simple(prob_base, factor_contexto):
-    """
-    Ajusta una probabilidad de una sola línea.
-
-    Convierte el factor de contexto en un ajuste limitado.
-    """
-
-    if prob_base is None:
-        return None, 0
-
-    ajuste = (factor_contexto - 1) * 100
-
-    # Limitamos el ajuste entre -6% y +6%
-    ajuste = max(-6, min(6, ajuste))
-
-    prob_final = prob_base + ajuste
-    prob_final = max(1, min(99, prob_final))
-
-    return round(prob_final, 1), round(ajuste, 1)
-
-
-# ==========================================================
-# 5. AJUSTE DE LAMBDAS
-# ==========================================================
-
-def ajustar_lambda_contexto(lambda_base, factor_contexto):
-    """
-    Aplica el factor de contexto a un lambda.
-
-    El resultado se usa para recalcular Poisson
-    en todas las líneas del mercado.
-    """
-
-    if lambda_base is None:
-        return None, 1.00
-
-    lambda_ajustado = float(lambda_base) * float(factor_contexto)
-
-    return round(lambda_ajustado, 3), round(factor_contexto, 3)
-
-
-# ==========================================================
-# 6. CONTEXTO ESPECÍFICO
-# ==========================================================
-
-def generar_contexto_texto(perfiles, division_local, division_visitante):
-    """
-    Genera un texto específico del enfrentamiento.
-    """
-
-    texto = (
-        f"División local: {division_local or 'Sin datos'}. "
-        f"División visitante: {division_visitante or 'Sin datos'}. "
-        f"Local: remates {perfiles['remates_local']}, "
-        f"concede remates {perfiles['remates_concede_local']}, "
-        f"tiros a puerta {perfiles['sot_local']}, "
-        f"concede tiros a puerta {perfiles['sot_concede_local']}. "
-        f"Visitante: remates {perfiles['remates_visitante']}, "
-        f"concede remates {perfiles['remates_concede_visitante']}, "
-        f"tiros a puerta {perfiles['sot_visitante']}, "
-        f"concede tiros a puerta {perfiles['sot_concede_visitante']}."
-    )
-    return texto
-
-
-# ==========================================================
-# 7. TABLA RESUMEN DE CONTEXTO
-# ==========================================================
-
-def generar_tabla_contexto(
-    prob_base,
-    metricas,
-    equipo_local_archivo,
-    equipo_visitante_archivo,
-    n_partidos=10,
-    posicion_local=None,
-    posicion_visitante=None
-):
-    """
-    Genera la tabla final de contexto y ajuste.
-
-    prob_base debe ser un diccionario con claves similares a:
-    - Local Gana
-    - Empate
-    - Visitante Gana
-    - Prob. Local marca
-    - Prob. Visitante marca
-    - Prob. BTTS
-    - Prob. Over 1.5 Goles
-    - Prob. Over 2.5 Goles
-    """
-
-    if prob_base is None or metricas is None:
-        return pd.DataFrame()
-
-    division_local = obtener_division_equipo(equipo_local_archivo)
-    division_visitante = obtener_division_equipo(equipo_visitante_archivo)
-
-    percentiles = obtener_percentiles_partido(
-        metricas,
-        equipo_local_archivo,
-        equipo_visitante_archivo,
-        n_partidos
-    )
-
-    if not percentiles:
-        return pd.DataFrame()
-
-    perfiles = obtener_perfiles_partido(percentiles)
-
-    factores = obtener_factores_contexto(perfiles)
-
-    contexto_texto = generar_contexto_texto(
-        perfiles,
-        division_local,
-        division_visitante
-    )
-
-    ajuste_tabla = 0
-
-    posicion_local = obtener_posicion_equipo(
-        equipo_local_archivo,
-        n_partidos
-    )
-
-    posicion_visitante = obtener_posicion_equipo(
-        equipo_visitante_archivo,
-        n_partidos
-    )
-
-    diferencia_posiciones = None
-
-    if posicion_local is not None and posicion_visitante is not None:
-        diferencia_posiciones = abs(
-            posicion_local - posicion_visitante
-        )
-
-    ajuste_tabla = 0
-
-    if diferencia_posiciones is not None:
-
-        if diferencia_posiciones >= 10:
-            ajuste_tabla = 1
-        elif diferencia_posiciones <= 3:
-            ajuste_tabla = -1
-
-    posicion_texto = (
-        f"Posición local: {posicion_local if posicion_local is not None else 'Sin datos'}. "
-        f"Posición visitante: {posicion_visitante if posicion_visitante is not None else 'Sin datos'}. "
-        f"Diferencia: {diferencia_posiciones if diferencia_posiciones is not None else 'Sin datos'}. "
-        f"Ajuste tabla: {ajuste_tabla}."
-    )
-    
-    prob_local_1x2, prob_empate_1x2, prob_visitante_1x2 = ajustar_mercado_1x2(
-        prob_base.get("Local_gana"),
-        prob_base.get("Empate"),
-        prob_base.get("Visitante_gana"),
-        factores["peligro_local"],
-        factores["peligro_visitante"]
-    )
-
-    mercados = [
-        (
-            "Gana Local",
-            prob_base.get("Local_gana"),
-            prob_local_1x2,
-            factores["peligro_local"]
-        ),
-        (
-            "Empate",
-            prob_base.get("Empate"),
-            prob_empate_1x2,
-            1.00
-        ),
-        (
-            "Gana visitante",
-            prob_base.get("Visitante_gana"),
-            prob_visitante_1x2,
-            factores["peligro_visitante"]
-        ),
-        (
-            "Marca local",
-            prob_base.get("Marca Local"),
-            None,
-            factores["peligro_local"]
-        ),
-        (
-            "Marca visitante",
-            prob_base.get("Marca Visitante"),
-            None,
-            factores["peligro_visitante"]
-        ),
-        (
-            "BTTS",
-            prob_base.get("BTTS"),
-            None,
-            factores["btts"]
-        ),
-        (
-            "Over 1.5 goles",
-            prob_base.get("Over 1.5 Goles"),
-            None,
-            factores["over_goles"]
-        ),
-        (
-            "Over 2.5 goles",
-            prob_base.get("Over 2.5 Goles"),
-            None,
-            factores["over_goles"]
-        )
-    ]
-    filas = []
-
-    for mercado, prob, prob_1x2_ajustada, factor in mercados:
-
-        if mercado in ["Gana Local", "Empate", "Gana visitante"]:
-
-            if prob_1x2_ajustada is None:
-                continue
-
-            prob_final = prob_1x2_ajustada
-            ajuste = round(prob_final - prob, 1)
-
-        else:
-            prob_final, ajuste = ajustar_probabilidad_simple(
-                prob,
-                factor
-            )
-
-            if prob_final is None:
-                continue
-
-        diferencia = round(prob_final - prob, 1)
-
-        if diferencia >= 2:
-            senal = "Favorable"
-        elif diferencia <= -2:
-            senal = "Desfavorable"
-        else:
-            senal = "Neutra"
-
-        filas.append({
-            "Mercado": mercado,
-            "Prob. base": round(prob, 1),
-            "Factor contexto": factor,
-            "Ajuste": ajuste,
-            "Ajuste tabla": ajuste_tabla,
-            "Prob. final": prob_final,
-            "Diferencia": diferencia,
-            "Señal": senal,
-            "Contexto": contexto_texto
-        })
-        
-    def factor_total_ponderado(base_local, base_vis, factor_local, factor_vis):
-        if base_local is None or base_vis is None:
-            return 1.0
-
-        base_local = float(base_local)
-        base_vis = float(base_vis)
-
-        total_base = base_local + base_vis
-
-        if total_base <= 0:
-            return 1.0
-
-        total_ajustado = (
-            base_local * factor_local
-            + base_vis * factor_vis
-        )
-
-        return total_ajustado / total_base
-
-
-    factor_remates_total = factor_total_ponderado(
-        metricas.get("Remates_att_local"),
-        metricas.get("Remates_att_vis"),
-        factores["remates_local"],
-        factores["remates_visitante"]
-    )
-
-    factor_sot_total = factor_total_ponderado(
-        metricas.get("SoT_local"),
-        metricas.get("SoT_vis"),
-        factores["sot_local"],
-        factores["sot_visitante"]
-    )
-
-    lambdas_contexto = [
-        (
-            "Remates totales",
-            metricas.get("Remates_att_local", 0)
-            + metricas.get("Remates_att_vis", 0),
-            factor_remates_total
-        ),
-        (
-            "Remates local",
-            metricas.get("Remates_att_local"),
-            factores["remates_local"]
-        ),
-        (
-            "Remates visitante",
-            metricas.get("Remates_att_vis"),
-            factores["remates_visitante"]
-        ),
-        (
-            "A puerta totales",
-            metricas.get("SoT_local", 0)
-            + metricas.get("SoT_vis", 0),
-            factor_sot_total
-        ),
-        (
-            "A puerta local",
-            metricas.get("SoT_local"),
-            factores["sot_local"]
-        ),
-        (
-            "A puerta visitante",
-            metricas.get("SoT_vis"),
-            factores["sot_visitante"]
-        )
-    ]
-
-    for mercado, lambda_base, factor in lambdas_contexto:
-
-        lambda_ajustado, factor_final = ajustar_lambda_contexto(
-            lambda_base,
-            factor
-        )
-
-        if lambda_ajustado is None:
-            continue
-
-        diferencia_porcentual = round(
-            (factor_final - 1) * 100,
-            1
-        )
-
-        if diferencia_porcentual >= 2:
-            senal = "Favorable"
-        elif diferencia_porcentual <= -2:
-            senal = "Desfavorable"
-        else:
-            senal = "Neutra"
-
-        filas.append({
-            "Mercado": mercado,
-            "Lambda base": round(lambda_base, 2),
-            "Factor contexto": factor_final,
-            "Lambda ajustado": lambda_ajustado,
-            "Ajuste": f"{diferencia_porcentual}%",
-            "Ajuste tabla": ajuste_tabla,
-            "Señal": senal,
-            "Contexto": contexto_texto + " " + posicion_texto
-        })
-
-    return pd.DataFrame(filas)
-
-# ==========================================================
-# 8. CONTEXTO DE GOLES PARA EL MODELO MARCA / RECIBE
-# ==========================================================
-
-from scipy.stats import poisson, skellam
-
-
-def _numero_contexto(valor):
-    try:
-        numero = float(valor)
-        return numero if np.isfinite(numero) else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _leer_catalogo_contexto():
-    df = pd.read_excel(RUTA_EQUIPOS_LIGAS)
-    df = normalizar_columnas_basicas(df)
-
-    requeridas = {"equipo", "division", "analizar"}
-    faltantes = requeridas - set(df.columns)
-
-    if faltantes:
-        raise ValueError(
-            f"Faltan columnas en {RUTA_EQUIPOS_LIGAS}: "
-            f"{', '.join(sorted(faltantes))}"
-        )
-
-    for columna in requeridas:
-        df[columna] = (
-            df[columna]
-            .astype("string")
-            .str.strip()
-            .str.lower()
-        )
-
-    return df
-
-
 def _resumen_goles_contexto(df, condicion, n_partidos):
     """
     df debe contener exclusivamente partidos del equipo
@@ -1407,9 +707,8 @@ def aplicar_contexto_goles(
 
     return final, estado
 
-
 # ==========================================================
-# CONTEXTO PARA PROYECCIONES DE REMATES Y TIROS A PUERTA
+# CONTEXTO DE REMATES Y TIROS A PUERTA
 # ==========================================================
 
 def preparar_contexto_remates_sot(
@@ -1420,105 +719,114 @@ def preparar_contexto_remates_sot(
     fuerza=0.50,
 ):
     """
-    Carga referencias por división y condición.
+    Devuelve:
+        factores, estado
 
-    fuerza=0.50 aplica la mitad del ajuste del mapa de perfiles:
-    1.10 -> 1.05
-    0.90 -> 0.95
-
-    No modifica métricas, históricos ni probabilidades base.
+    Compara cada equipo dentro de su división y condición.
+    Los factores se aplican a las proyecciones, no a los
+    históricos ni a las columnas de probabilidad base.
     """
+
     factores = {
         "remates_local": 1.0,
         "remates_visitante": 1.0,
         "sot_local": 1.0,
         "sot_visitante": 1.0,
     }
-    avisos = []
 
     try:
-        catalogo = normalizar_columnas_basicas(
-            pd.read_excel(RUTA_EQUIPOS_LIGAS)
-        )
-
-        requeridas = {"equipo", "division", "analizar"}
-
-        if not requeridas.issubset(catalogo.columns):
-            return factores, "Sin contexto: faltan columnas del catálogo."
-
-        for col in requeridas:
-            catalogo[col] = (
-                catalogo[col].astype("string")
-                .str.strip().str.lower()
-            )
-
-        mapa = {
-            str(clave).strip().lower(): str(valor).strip().casefold()
-            for clave, valor in mapa_equipos.items()
-        }
+        catalogo = _leer_catalogo_contexto()
 
         equipo_local = str(equipo_local).strip().lower()
         equipo_visitante = str(equipo_visitante).strip().lower()
 
-        def obtener_division(equipo):
+        mapa = {
+            str(clave).strip().lower():
+            str(valor).strip().casefold()
+            for clave, valor in mapa_equipos.items()
+        }
+
+        def division_equipo(equipo):
             filas = catalogo.loc[
                 (catalogo["equipo"] == equipo)
                 & (catalogo["analizar"] == "si"),
                 "division"
             ].dropna()
 
-            return filas.iloc[0] if not filas.empty else None
+            if filas.empty:
+                return None
 
-        division_local = obtener_division(equipo_local)
-        division_vis = obtener_division(equipo_visitante)
+            division = str(filas.iloc[0]).strip()
+
+            return division if division else None
+
+        division_local = division_equipo(equipo_local)
+        division_vis = division_equipo(equipo_visitante)
 
         if division_local is None or division_vis is None:
-            return factores, "Sin contexto: falta división analizable."
-
-        cache_archivos = {}
-        cache_referencias = {}
+            return (
+                factores,
+                "Sin contexto: falta división analizable."
+            )
 
         columnas = [
-            "shots_favor", "shots_contra",
-            "a_puerta_favor", "a_puerta_contra",
+            "shots_favor",
+            "shots_contra",
+            "a_puerta_favor",
+            "a_puerta_contra",
         ]
 
-        def leer_equipo(equipo, condicion):
+        cache_archivos = {}
+        cache_resumenes = {}
+        cache_referencias = {}
+
+        def resumen_equipo(equipo, condicion):
+            clave = (equipo, condicion)
+
+            if clave in cache_resumenes:
+                return cache_resumenes[clave]
+
+            nombre = mapa.get(equipo)
+
+            if nombre is None:
+                cache_resumenes[clave] = None
+                return None
+
             if equipo not in cache_archivos:
-                ruta = os.path.join(RUTA_STATS, f"{equipo}.xlsx")
+                ruta = os.path.join(
+                    RUTA_STATS, f"{equipo}.xlsx"
+                )
 
                 try:
-                    df = normalizar_columnas_basicas(
-                        pd.read_excel(ruta)
-                    )
+                    df = pd.read_excel(ruta)
+                    df = normalizar_columnas_basicas(df)
+
                 except (OSError, ValueError):
-                    cache_archivos[equipo] = None
-                else:
-                    cache_archivos[equipo] = df
+                    df = None
+
+                cache_archivos[equipo] = df
 
             df = cache_archivos[equipo]
 
             if df is None:
-                return None
-
-            # Exigimos el nombre del mapa para no confundir
-            # equipos con nombres parcialmente coincidentes.
-            nombre = mapa.get(equipo)
-
-            if nombre is None:
+                cache_resumenes[clave] = None
                 return None
 
             col_condicion = (
-                "equipo_local" if condicion == "local"
+                "equipo_local"
+                if condicion == "local"
                 else "visitante"
             )
 
             if col_condicion not in df.columns:
+                cache_resumenes[clave] = None
                 return None
 
             nombres = (
-                df[col_condicion].astype("string")
-                .str.strip().str.casefold()
+                df[col_condicion]
+                .astype("string")
+                .str.strip()
+                .str.casefold()
             )
 
             filtrado = df.loc[nombres == nombre].copy()
@@ -1529,8 +837,10 @@ def preparar_contexto_remates_sot(
                     dayfirst=True,
                     errors="coerce",
                 )
+
                 filtrado = filtrado.sort_values(
-                    "_fecha_contexto", na_position="first"
+                    "_fecha_contexto",
+                    na_position="first",
                 )
 
             if n_partidos is not None:
@@ -1544,21 +854,27 @@ def preparar_contexto_remates_sot(
                     continue
 
                 valores = pd.to_numeric(
-                    filtrado[col], errors="coerce"
+                    filtrado[col],
+                    errors="coerce",
                 )
+
                 valores = valores[
-                    valores.notna() & np.isfinite(valores)
+                    valores.notna()
+                    & np.isfinite(valores)
                     & (valores >= 0)
                 ]
 
                 resumen[col] = (
                     float(valores.mean())
-                    if len(valores) >= 3 else np.nan
+                    if len(valores) >= 3
+                    else np.nan
                 )
+
+            cache_resumenes[clave] = resumen
 
             return resumen
 
-        def referencia(division, condicion):
+        def referencia_division(division, condicion):
             clave = (division, condicion)
 
             if clave not in cache_referencias:
@@ -1571,27 +887,45 @@ def preparar_contexto_remates_sot(
                 filas = []
 
                 for equipo in equipos:
-                    resumen = leer_equipo(equipo, condicion)
+                    resumen = resumen_equipo(
+                        equipo, condicion
+                    )
 
                     if resumen is not None:
                         filas.append(resumen)
 
                 cache_referencias[clave] = pd.DataFrame(
-                    filas, columns=["equipo"] + columnas
+                    filas,
+                    columns=["equipo"] + columnas,
                 )
 
             return cache_referencias[clave]
 
-        liga_local = referencia(division_local, "local")
-        liga_vis = referencia(division_vis, "visitante")
+        liga_local = referencia_division(
+            division_local, "local"
+        )
 
-        propio_local = leer_equipo(equipo_local, "local")
-        propio_vis = leer_equipo(equipo_visitante, "visitante")
+        liga_vis = referencia_division(
+            division_vis, "visitante"
+        )
+
+        propio_local = resumen_equipo(
+            equipo_local, "local"
+        )
+
+        propio_vis = resumen_equipo(
+            equipo_visitante, "visitante"
+        )
 
         if propio_local is None or propio_vis is None:
-            return factores, "Sin contexto: no se pudo cargar un equipo."
+            return (
+                factores,
+                "Sin contexto: no se pudo cargar un equipo "
+                "o no coincide su nombre en mapa_equipos."
+            )
 
         fuerza = float(np.clip(fuerza, 0.0, 1.0))
+        avisos = []
 
         def factor_cruce(
             propio_ataque,
@@ -1606,18 +940,25 @@ def preparar_contexto_remates_sot(
             concede = propio_defensa.get(col_contra)
 
             if pd.isna(ataque) or pd.isna(concede):
-                avisos.append(f"{etiqueta}: datos insuficientes")
+                avisos.append(
+                    f"{etiqueta}: datos insuficientes"
+                )
                 return 1.0
 
             pct_ataque = calcular_percentil_liga(
-                ataque, liga_ataque[col_favor]
+                ataque,
+                liga_ataque[col_favor],
             )
+
             pct_concede = calcular_percentil_liga(
-                concede, liga_defensa[col_contra]
+                concede,
+                liga_defensa[col_contra],
             )
 
             if pct_ataque is None or pct_concede is None:
-                avisos.append(f"{etiqueta}: referencia insuficiente")
+                avisos.append(
+                    f"{etiqueta}: referencia insuficiente"
+                )
                 return 1.0
 
             factor = obtener_factor_enfrentamiento(
@@ -1627,29 +968,41 @@ def preparar_contexto_remates_sot(
 
             return 1.0 + fuerza * (factor - 1.0)
 
-        for prefijo, favor, contra in [
+        mercados = [
             ("remates", "shots_favor", "shots_contra"),
             ("sot", "a_puerta_favor", "a_puerta_contra"),
-        ]:
+        ]
+
+        for prefijo, col_favor, col_contra in mercados:
             factores[f"{prefijo}_local"] = factor_cruce(
-                propio_local, propio_vis,
-                liga_local, liga_vis,
-                favor, contra, f"{prefijo} local",
+                propio_local,
+                propio_vis,
+                liga_local,
+                liga_vis,
+                col_favor,
+                col_contra,
+                f"{prefijo} local",
             )
 
             factores[f"{prefijo}_visitante"] = factor_cruce(
-                propio_vis, propio_local,
-                liga_vis, liga_local,
-                favor, contra, f"{prefijo} visitante",
+                propio_vis,
+                propio_local,
+                liga_vis,
+                liga_local,
+                col_favor,
+                col_contra,
+                f"{prefijo} visitante",
             )
 
-        estado = (
-            "Contexto parcial: " + "; ".join(avisos)
-            if avisos else
-            "Contexto de remates y tiros a puerta aplicado."
-        )
+        if avisos:
+            estado = "Contexto parcial: " + "; ".join(avisos)
+        else:
+            estado = (
+                "Contexto de remates y tiros a puerta aplicado."
+            )
 
         return factores, estado
 
     except (OSError, ValueError, KeyError, TypeError) as error:
         return factores, f"Sin contexto: {error}"
+
