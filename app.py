@@ -13,8 +13,8 @@ from partidos_manager import (
     inicializar_lista_partidos,
     mostrar_boton_agregar_partido
 )
-from contexto_liga import generar_tabla_contexto
-from contexto_liga import convertir_tabla_a_imagen
+from contexto_liga import (generar_tabla_contexto, convertir_tabla_a_imagen, aplicar_contexto_goles,
+                           preparar_contexto_remates_sot)
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -1751,6 +1751,7 @@ def probabilidad_over_remates(
     n_rival,
     peso_equipo=0.60,
     peso_rival=0.40,
+    factor_contexto = 1.0
 ):
     lambda_remates = (
         peso_equipo * proy_equipo +
@@ -1759,7 +1760,9 @@ def probabilidad_over_remates(
 
     cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
     factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
-    lambda_ajustado = lambda_remates * factor_vol
+    lambda_ajustado = (
+        lambda_remates * factor_vol * factor_contexto
+    )
     
     penalizacion_muestra = 0.0
     if n_equipo < 10:
@@ -1787,6 +1790,7 @@ def probabilidad_over_sot(
     n_rival,
     peso_equipo=0.60,
     peso_rival=0.40,
+    factor_contexto = 1.0
 ):
     lambda_sot = (
         peso_equipo * sot_equipo +
@@ -1795,7 +1799,9 @@ def probabilidad_over_sot(
     
     cv_mix = 0.6 * cv_equipo + 0.4 * cv_rival
     factor_vol = max(0.85, min(1.15, 1 - 0.3 * cv_mix))
-    lambda_ajustado = lambda_sot * factor_vol
+    lambda_ajustado = (
+        lambda_sot * factor_vol * factor_contexto
+    )
     
     penalizacion_muestra = 0.0
     if n_equipo < 10:
@@ -2001,6 +2007,7 @@ def calcular_proyeccion_individual(
     pct_historico_rival=None,
     racha_actual_rival=None,
     racha_max_rival=None,
+    factor_contexto = 1.0
 ):
     prob_base = probabilidad_over_remates(
         proy_equipo,
@@ -2012,6 +2019,7 @@ def calcular_proyeccion_individual(
         n_rival,
         peso_equipo,
         peso_rival,
+        factor_contexto = factor_contexto
     )
     
     if (
@@ -2069,6 +2077,7 @@ def calcular_proyeccion_individual_sot(
     pct_historico_rival=None,
     racha_actual_rival=None,
     racha_max_rival=None,
+    factor_contexto = 1.0,
 ):   
     prob_base = probabilidad_over_sot(
         sot_equipo,
@@ -2080,6 +2089,7 @@ def calcular_proyeccion_individual_sot(
         n_rival,
         peso_equipo,
         peso_rival,
+        factor_contexto=factor_contexto,
     )
         
     if (
@@ -2907,9 +2917,33 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
     })         
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
-def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante, tabla_contexto = None):
+def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante, tabla_contexto = None,
+                             equipo_local_archivo=None, equipo_visitante_archivo=None):
+    
     if metricas is None:
         return
+    
+    factores_contexto = {
+        "remates_local": 1.0,
+        "remates_visitante": 1.0,
+        "sot_local": 1.0,
+        "sot_visitante": 1.0,
+    }
+
+    estado_contexto_remates = (
+        "Sin contexto: faltan identificadores de equipos."
+    )
+
+    if equipo_local_archivo and equipo_visitante_archivo:
+        factores_contexto, estado_contexto_remates = (
+            preparar_contexto_remates_sot(
+                equipo_local=equipo_local_archivo,
+                equipo_visitante=equipo_visitante_archivo,
+                mapa_equipos=mapa_equipos,
+                n_partidos=10,
+                fuerza=0.50,
+            )
+        )  
 
     lambda_L = metricas["lambda_local_new"]
     lambda_V = metricas["lambda_vis_new"]
@@ -3065,6 +3099,30 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
             p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
             prob_base = round(p_over * 100, 1)
+            lambda_total_contexto = (
+                metricas["Remates_att_local"]
+                * factores_contexto["remates_local"]
+                + metricas["Remates_att_vis"]
+                * factores_contexto["remates_visitante"]
+            )
+
+            lambda_proyeccion_contexto = (
+                lambda_total_contexto * factor_vol
+            )
+
+            p_over_contexto = poisson.sf(
+                k_linea,
+                lambda_proyeccion_contexto
+            )
+
+            p_over_contexto = max(
+                0.0,
+                min(1.0, p_over_contexto - penalizacion_muestra)
+            )
+
+            prob_base_contexto = round(
+                p_over_contexto * 100, 1
+            )
 
             score_local = calcular_score_regularidad(
                 hist_local["pct_n"],
@@ -3079,8 +3137,9 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             score_combinado = 0.5 * score_local + 0.5 * score_vis
 
             n_mix = min(n_rem_local, n_rem_vis)
+            
             proyeccion = ajustar_prob_por_regularidad(
-                prob_base,
+                prob_base_contexto,
                 score_combinado,
                 cv_mix,
                 n_mix,
@@ -3157,6 +3216,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 pct_historico_rival=hist_vis_concede["pct_n"],
                 racha_actual_rival=hist_vis_concede["racha_actual"],
                 racha_max_rival=hist_vis_concede["racha_max"],
+                factor_contexto=factores_contexto["remates_local"],
             )
 
             
@@ -3176,6 +3236,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 pct_historico_rival=hist_local_concede["pct_n"],
                 racha_actual_rival=hist_local_concede["racha_actual"],
                 racha_max_rival=hist_local_concede["racha_max"],
+                factor_contexto=factores_contexto["remates_visitante"],
             )
                         
             rows_shots_eq.append([
@@ -3210,47 +3271,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 col_extra=["Prob. Visitante %", "Proy Vis"],
                 umbrales=(70, 60)
             )
-        )
-  
-    if tabla_contexto is not None and not tabla_contexto.empty:
-
-        mercados_multiples_lineas = [
-            "Remates totales",
-            "Remates local",
-            "Remates visitante",
-            "A puerta totales",
-            "A puerta local",
-            "A puerta visitante"
-        ]
-
-        tabla_multiples_lineas = tabla_contexto[
-            tabla_contexto["Mercado"].isin(mercados_multiples_lineas)
-        ].copy()
-
-        columnas_multiples_lineas = [
-            "Mercado",
-            "Lambda base",
-            "Factor contexto",
-            "Lambda ajustado",
-            "Ajuste",
-            "Ajuste tabla",
-            "Señal"
-        ]
-
-        columnas_existentes = [
-            col for col in columnas_multiples_lineas
-            if col in tabla_multiples_lineas.columns
-        ]
-
-        tabla_multiples_lineas = tabla_multiples_lineas[columnas_existentes]
-
-        fig_multiples_lineas = convertir_tabla_a_imagen(
-            tabla_multiples_lineas,
-            "Contexto de liga: remates y tiros a puerta"
-        )
-
-        if fig_multiples_lineas is not None:
-            st.pyplot(fig_multiples_lineas)
+        )   
 
     # === Tabla 6 y 7 en la misma fila ===
     col6, col7 = st.columns(2)
@@ -3291,6 +3312,31 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             p_over = 1 - poisson.cdf(k_linea, lambda_ajustado)
             p_over = max(0.0, min(1.0, p_over - penalizacion_muestra))
             prob_base = round(p_over * 100, 1)
+            
+            lambda_total_contexto = (
+                metricas["SoT_local"]
+                * factores_contexto["sot_local"]
+                + metricas["SoT_vis"]
+                * factores_contexto["sot_visitante"]
+            )
+
+            lambda_proyeccion_contexto = (
+                lambda_total_contexto * factor_vol
+            )
+
+            p_over_contexto = poisson.sf(
+                k_linea,
+                lambda_proyeccion_contexto
+            )
+
+            p_over_contexto = max(
+                0.0,
+                min(1.0, p_over_contexto - penalizacion_muestra)
+            )
+
+            prob_base_contexto = round(
+                p_over_contexto * 100, 1
+            )
 
             score_local = calcular_score_regularidad(
                 hist_local["pct_n"],
@@ -3306,7 +3352,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
 
             n_mix = min(n_sot_local, n_sot_vis)
             proyeccion = ajustar_prob_por_regularidad(
-                prob_base,
+                prob_base_contexto,
                 score_combinado,
                 cv_mix,
                 n_mix,
@@ -3352,7 +3398,28 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         st.subheader("Tiros a Puerta por Equipo")
         lineas_sot_eq = [2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
         rows_sot_eq = []
+        sot_concede_local = pd.to_numeric(
+            df_local["a_puerta_contra"].tail(10),
+            errors="coerce"
+        ).dropna().mean()
 
+        sot_concede_vis = pd.to_numeric(
+            df_visitante["a_puerta_contra"].tail(10),
+            errors="coerce"
+        ).dropna().mean()
+
+        concesion_local_valida = (
+            pd.notna(sot_concede_local)
+            and np.isfinite(sot_concede_local)
+            and sot_concede_local >= 0
+        )
+
+        concesion_vis_valida = (
+            pd.notna(sot_concede_vis)
+            and np.isfinite(sot_concede_vis)
+            and sot_concede_vis >= 0
+        )
+        
         for L in lineas_sot_eq:
             _, oL = poisson_prob_over_under(metricas["SoT_local"], L, max_k=10)
             _, oV = poisson_prob_over_under(metricas["SoT_vis"], L, max_k=10)
@@ -3365,7 +3432,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
 
             proyeccion_local = calcular_proyeccion_individual_sot(
                 sot_equipo=metricas["SoT_local"],
-                sot_rival=metricas["SoT_vis"],
+                sot_rival=(float(sot_concede_vis)if concesion_vis_valida else metricas["SoT_vis"]),
                 linea=L,
                 cv_equipo=metricas.get("Remates_cv_local", 0.3),
                 cv_rival=metricas.get("Remates_cv_vis", 0.3),
@@ -3379,11 +3446,12 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 pct_historico_rival=hist_vis_concede["pct_n"],
                 racha_actual_rival=hist_vis_concede["racha_actual"],
                 racha_max_rival=hist_vis_concede["racha_max"],
+                factor_contexto=factores_contexto["sot_local"],
             )
             
             proyeccion_vis = calcular_proyeccion_individual_sot(
                 sot_equipo=metricas["SoT_vis"],
-                sot_rival=metricas["SoT_local"],
+                sot_rival=(float(sot_concede_local) if concesion_local_valida else metricas["SoT_local"]),
                 linea=L,
                 cv_equipo=metricas.get("Remates_cv_vis", 0.3),
                 cv_rival=metricas.get("Remates_cv_local", 0.3),
@@ -3397,6 +3465,7 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 pct_historico_rival=hist_local_concede["pct_n"],
                 racha_actual_rival=hist_local_concede["racha_actual"],
                 racha_max_rival=hist_local_concede["racha_max"],
+                factor_contexto=factores_contexto["sot_visitante"],
             )
 
             rows_sot_eq.append([
@@ -3432,6 +3501,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 umbrales=(70, 60)
             )
         )
+        
+        st.caption(estado_contexto_remates)
         
 def prob_a_texto_con_cuota(p):
     try:
@@ -4446,7 +4517,9 @@ if equipo_local_nombre and equipo_visitante_nombre:
             prob_tablas,
         )    
 
-    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V, df_local_all, df_visitante_all, tabla_contexto)    
+    mostrar_tablas_avanzadas(metricas_avanzadas, lambda1_L, lambda1_V, 
+                            df_local_all, df_visitante_all, equipo_local_archivo=equipo_local_nombre, 
+                            equipo_visitante_archivo=equipo_visitante_nombre)    
 
     st.markdown("## 📊 Estadísticas Detalladas de Partidos Recientes")   
     
@@ -4536,88 +4609,103 @@ if equipo_local_nombre and equipo_visitante_nombre:
             df_visitante= df_visitante_all,
         )
         
-        rows_prediccion = [
-            ["Gana Local", prediccion["Gana Local"]],
-            ["Empate", prediccion["Empate"]],
-            ["Gana Visitante", prediccion["Gana Visitante"]],
-            ["Local o Empate (1X)", prediccion["1X"]],
-            ["Visitante o Empate (X2)", prediccion["X2"]],
-            ["Gana Cualquiera (12)", prediccion["12"]],
-            ["Marca Local", prediccion["Marca Local"]],
-            ["Marca Visitante", prediccion["Marca Visitante"]],
-            ["BTTS", prediccion["BTTS"]],
-            ["Over 1.5 Goles", prediccion["Over 1.5"]],
-            ["Over 2.5 Goles", prediccion["Over 2.5"]],
-        ]
-        
-        df_prediccion = pd.DataFrame(
-            rows_prediccion,
-            columns=["Métrica", "Probabilidad %"]
+        prediccion_contexto, estado_contexto = aplicar_contexto_goles(
+            prediccion=prediccion,
+            df_local=df_local_all,
+            df_visitante=df_visitante_all,
+            equipo_local=equipo_local_nombre,
+            equipo_visitante=equipo_visitante_nombre,
+            n_partidos=rango_actual,
+            intensidad=0.10,
         )
         
-        # Mostrar en 3 columnas para que se vea compacta
-        col_pred_1, col_pred_2, col_pred_3 = st.columns(3)
-        
-        with col_pred_1:
-            st.markdown("### 🎯 Resultado y Dobles")
-            df_1x2 = df_prediccion.iloc[0:6].copy()
-            df_1x2.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_1x2, "Prob. %", umbrales=(70, 60)))
-        
-        with col_pred_2:
-            st.markdown("### ⚽ Goles y BTTS")
-            df_goles = df_prediccion.iloc[6:9].copy()
-            df_goles.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_goles, "Prob. %", umbrales=(70, 60)))
-        
-        with col_pred_3:
-            st.markdown("### 📈 Overs")
-            df_overs = df_prediccion.iloc[9:11].copy()
-            df_overs.columns = ["Métrica", "Prob. %"]
-            st.table(formatear_y_resaltar(df_overs, "Prob. %", umbrales=(65, 55)))     
+        mercados_prediccion = [
+            ("Gana Local", "Gana Local"),
+            ("Empate", "Empate"),
+            ("Gana Visitante", "Gana Visitante"),
+            ("Local o Empate 1X", "1X"),
+            ("Visitante o Empate X2", "X2"),
+            ("Gana Cualquiera 12", "12"),
+            ("Marca Local", "Marca Local"),
+            ("Marca Visitante", "Marca Visitante"),
+            ("BTTS", "BTTS"),
+            ("Over 1.5 Goles", "Over 1.5"),
+            ("Over 2.5 Goles", "Over 2.5"),
+        ]
 
-        if tabla_contexto is not None and not tabla_contexto.empty:
+        filas_prediccion = []
 
-            mercados_una_linea = [
-                "Gana Local",
-                "Empate",
-                "Gana visitante",
-                "Marca local",
-                "Marca visitante",
-                "BTTS",
-                "Over 1.5 goles",
-                "Over 2.5 goles"
-            ]
-
-            tabla_una_linea = tabla_contexto[
-                tabla_contexto["Mercado"].isin(mercados_una_linea)
-            ].copy()
-
-            columnas_una_linea = [
-                "Mercado",
-                "Prob. base",
-                "Factor contexto",
-                "Ajuste",
-                "Ajuste tabla",
-                "Prob. final",
-                "Diferencia",
-                "Señal"
-            ]
-
-            columnas_existentes = [
-                col for col in columnas_una_linea
-                if col in tabla_una_linea.columns
-            ]
-
-            tabla_una_linea = tabla_una_linea[columnas_existentes]
-
-            fig_una_linea = convertir_tabla_a_imagen(
-                tabla_una_linea,
-                "Contexto de liga: mercados de una línea"
+        for etiqueta, clave in mercados_prediccion:
+            prob_base = float(prediccion[clave])
+            prob_final = float(
+                prediccion_contexto.get(clave, prob_base)
             )
 
-            if fig_una_linea is not None:
-                st.pyplot(fig_una_linea)
+            filas_prediccion.append({
+                "Métrica": etiqueta,
+                "Prob. %": prob_base,
+                "Prob. final %": prob_final,
+            })
+
+        df_prediccion = pd.DataFrame(filas_prediccion)
+
+        col_pred1, col_pred2, col_pred3 = st.columns(3)
+
+        with col_pred1:
+            st.markdown("### 🏆 Resultado y Dobles")
+
+            df_1x2 = df_prediccion.iloc[0:6].copy()
+
+            tabla_1x2 = formatear_y_resaltar(
+                df_1x2,
+                "Prob. %",
+                umbrales=(70, 60),
+                col_extra="Prob. final %"
+            )
+
+            st.dataframe(
+                tabla_1x2,
+                hide_index=True,
+                use_container_width=True
+            )
+
+        with col_pred2:
+            st.markdown("### ⚽ Goles y BTTS")
+
+            df_goles = df_prediccion.iloc[6:9].copy()
+
+            tabla_goles = formatear_y_resaltar(
+                df_goles,
+                "Prob. %",
+                umbrales=(70, 60),
+                col_extra="Prob. final %"
+            )
+
+            st.dataframe(
+                tabla_goles,
+                hide_index=True,
+                use_container_width=True
+            )
+
+        with col_pred3:
+            st.markdown("### 📈 Overs")
+
+            df_overs = df_prediccion.iloc[9:11].copy()
+
+            tabla_overs = formatear_y_resaltar(
+                df_overs,
+                "Prob. %",
+                umbrales=(65, 55),
+                col_extra="Prob. final %"
+            )
+
+            st.dataframe(
+                tabla_overs,
+                hide_index=True,
+                use_container_width=True
+            )
+
+        st.caption(estado_contexto)
     
     # Definición de las columnas a mostrar basado en el rango seleccionado
     cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
