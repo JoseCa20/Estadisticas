@@ -4743,13 +4743,24 @@ if equipo_local_nombre and equipo_visitante_nombre:
             })
 
         df_prediccion = pd.DataFrame(filas_prediccion)
+        
+        columnas_prediccion = [
+            "Métrica",
+            "Prob. %",
+            "Prob. final %"
+        ]
 
         col_pred1, col_pred2, col_pred3 = st.columns(3)
 
         with col_pred1:
             st.markdown("### 🏆 Resultado y Dobles")
 
-            df_1x2 = df_prediccion.iloc[0:6].copy()
+            df_1x2 = (
+                df_prediccion.iloc[0:6]
+                .loc[:, columnas_prediccion]
+                .copy()
+                .reset_index(drop=True)
+            )
 
             tabla_1x2 = formatear_y_resaltar(
                 df_1x2,
@@ -4758,16 +4769,20 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 col_extra="Prob. final %"
             )
 
-            st.dataframe(
-                tabla_1x2,
-                hide_index=True,
-                use_container_width=True
+            st.table(
+                tabla_1x2
+                .hide(axis="index")
             )
 
         with col_pred2:
             st.markdown("### ⚽ Goles y BTTS")
 
-            df_goles = df_prediccion.iloc[6:9].copy()
+            df_goles = (
+                df_prediccion.iloc[6:9]
+                .loc[:, columnas_prediccion]
+                .copy()
+                .reset_index(drop=True)
+            )
 
             tabla_goles = formatear_y_resaltar(
                 df_goles,
@@ -4776,16 +4791,20 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 col_extra="Prob. final %"
             )
 
-            st.dataframe(
-                tabla_goles,
-                hide_index=True,
-                use_container_width=True
+            st.table(
+                tabla_goles
+                .hide(axis="index")
             )
 
         with col_pred3:
             st.markdown("### 📈 Overs")
 
-            df_overs = df_prediccion.iloc[9:11].copy()
+            df_overs = (
+                df_prediccion.iloc[9:11]
+                .loc[:, columnas_prediccion]
+                .copy()
+                .reset_index(drop=True)
+            )
 
             tabla_overs = formatear_y_resaltar(
                 df_overs,
@@ -4794,10 +4813,9 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 col_extra="Prob. final %"
             )
 
-            st.dataframe(
-                tabla_overs,
-                hide_index=True,
-                use_container_width=True
+            st.table(
+                tabla_overs
+                .hide(axis="index")
             )
 
         st.caption(estado_contexto)
