@@ -1006,3 +1006,532 @@ def preparar_contexto_remates_sot(
     except (OSError, ValueError, KeyError, TypeError) as error:
         return factores, f"Sin contexto: {error}"
 
+
+# ==========================================================
+# ANÁLISIS INDEPENDIENTE POR CUARTOS DE LA CLASIFICACIÓN
+# ==========================================================
+
+import unicodedata
+
+
+def _texto_cuartos(valor):
+    """Normaliza nombres para comparar sin coincidencias parciales."""
+    if pd.isna(valor):
+        return ""
+
+    texto = str(valor).strip().casefold()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(
+        caracter for caracter in texto
+        if not unicodedata.combining(caracter)
+    )
+
+    return " ".join(texto.split())
+
+
+def _cargar_division_cuartos(division, catalogo, mapa_equipos):
+    """
+    Lee todos los archivos completos de una división.
+
+    Devuelve:
+        {
+            "clasificacion": DataFrame,
+            "partidos": {equipo: DataFrame},
+            "rangos": {cuarto: texto},
+            "avisos": [...]
+        }
+
+    No modifica los cálculos anteriores.
+    """
+    equipos = (
+        catalogo.loc[
+            catalogo["division"] == division,
+            "equipo"
+        ]
+        .dropna()
+        .drop_duplicates()
+        .tolist()
+    )
+
+    if len(equipos) < 4:
+        raise ValueError(
+            f"{division}: hay menos de cuatro equipos registrados."
+        )
+
+    mapa = {
+        str(clave).strip().lower(): _texto_cuartos(valor)
+        for clave, valor in mapa_equipos.items()
+    }
+
+    sin_mapa = [
+        equipo for equipo in equipos
+        if not mapa.get(equipo)
+    ]
+
+    if sin_mapa:
+        raise ValueError(
+            f"{division}: faltan nombres en mapa_equipos para: "
+            + ", ".join(sin_mapa)
+        )
+
+    # Los nombres se resuelven dentro de la división,
+    # no globalmente entre países diferentes.
+    inverso = {}
+
+    for equipo in equipos:
+        nombre = mapa[equipo]
+
+        if nombre in inverso and inverso[nombre] != equipo:
+            raise ValueError(
+                f"{division}: nombre ambiguo '{nombre}' para "
+                f"{inverso[nombre]} y {equipo}."
+            )
+
+        inverso[nombre] = equipo
+
+    requeridas = {
+        "fecha",
+        "equipo_local",
+        "visitante",
+        "resultado",
+        "goles_local",
+        "goles_visitante",
+        "shots_favor",
+        "shots_contra",
+        "a_puerta_favor",
+        "a_puerta_contra",
+    }
+
+    columnas_metricas = [
+        "shots_favor",
+        "shots_contra",
+        "a_puerta_favor",
+        "a_puerta_contra",
+    ]
+
+    partidos = {}
+    filas_tabla = []
+    avisos = []
+
+    for equipo in equipos:
+        ruta = os.path.join(RUTA_STATS, f"{equipo}.xlsx")
+
+        try:
+            df = normalizar_columnas_basicas(
+                pd.read_excel(ruta)
+            ).copy()
+        except (OSError, ValueError) as error:
+            raise ValueError(
+                f"{division}: no se pudo leer {equipo}.xlsx. "
+                f"No se construye una clasificación parcial. "
+                f"Detalle: {error}"
+            ) from error
+
+        faltantes = requeridas - set(df.columns)
+
+        if faltantes:
+            raise ValueError(
+                f"{equipo}: faltan columnas: "
+                + ", ".join(sorted(faltantes))
+            )
+
+        # Omitir filas completamente vacías.
+        df = df.dropna(how="all").copy()
+
+        nombre = mapa[equipo]
+        nombres_local = df["equipo_local"].map(_texto_cuartos)
+        nombres_vis = df["visitante"].map(_texto_cuartos)
+
+        es_local = nombres_local == nombre
+        es_visitante = nombres_vis == nombre
+
+        pertenece = es_local ^ es_visitante
+        descartadas = int((~pertenece).sum())
+
+        if descartadas:
+            avisos.append(
+                f"{equipo}: {descartadas} filas no identificadas "
+                "como partidos propios."
+            )
+
+        df = df.loc[pertenece].copy()
+        es_local = es_local.loc[df.index]
+
+        df["_condicion"] = np.where(
+            es_local, "local", "visitante"
+        )
+
+        for columna in [
+            "goles_local", "goles_visitante"
+        ] + columnas_metricas:
+            df[columna] = pd.to_numeric(
+                df[columna], errors="coerce"
+            )
+
+        # No sumar puntos ni estadísticas de partidos sin marcador.
+        jugados = (
+            np.isfinite(df["goles_local"])
+            & np.isfinite(df["goles_visitante"])
+            & (df["goles_local"] >= 0)
+            & (df["goles_visitante"] >= 0)
+        )
+
+        no_jugados = int((~jugados).sum())
+
+        if no_jugados:
+            avisos.append(
+                f"{equipo}: {no_jugados} filas sin marcador válido "
+                "excluidas."
+            )
+
+        df = df.loc[jugados].copy()
+
+        df["_fecha"] = pd.to_datetime(
+            df["fecha"], dayfirst=True, errors="coerce"
+        )
+        df = df.sort_values("_fecha", na_position="first")
+
+        # No sumar dos veces el mismo partido dentro de un archivo.
+        clave_partido = [
+            "_fecha", "equipo_local", "visitante"
+        ]
+
+        duplicados = (
+            df["_fecha"].notna()
+            & df.duplicated(clave_partido, keep=False)
+        )
+
+        if duplicados.any():
+            raise ValueError(
+                f"{equipo}: hay partidos duplicados por "
+                "fecha, local y visitante. Revisá el archivo."
+            )
+
+        resultado = (
+            df["resultado"].astype("string")
+            .str.strip().str.upper()
+        )
+
+        df["_puntos"] = (
+            resultado.map({"W": 3, "D": 1})
+            .fillna(0)
+            .astype(int)
+        )
+
+        local = df["_condicion"] == "local"
+
+        df["_gf"] = np.where(
+            local, df["goles_local"], df["goles_visitante"]
+        )
+        df["_gc"] = np.where(
+            local, df["goles_visitante"], df["goles_local"]
+        )
+
+        df["_nombre_rival"] = np.where(
+            local, df["visitante"], df["equipo_local"]
+        )
+
+        df["_rival_id"] = (
+            df["_nombre_rival"]
+            .map(_texto_cuartos)
+            .map(inverso)
+        )
+
+        sin_rival = int(df["_rival_id"].isna().sum())
+
+        if sin_rival:
+            avisos.append(
+                f"{equipo}: {sin_rival} partidos con rival "
+                "sin correspondencia en el catálogo/mapa; "
+                "suman puntos, pero no entran en los cuartos."
+            )
+
+        # Un dato de remates faltante no se convierte en cero.
+        for columna in columnas_metricas:
+            valores = df[columna]
+
+            df[columna] = valores.where(
+                np.isfinite(valores) & (valores >= 0)
+            )
+
+        df["_remates_total"] = (
+            df["shots_favor"] + df["shots_contra"]
+        )
+        df["_sot_total"] = (
+            df["a_puerta_favor"] + df["a_puerta_contra"]
+        )
+
+        fila = {"equipo": equipo}
+
+        selecciones = {
+            "general": df,
+            "local": df.loc[df["_condicion"] == "local"],
+            "visitante": df.loc[df["_condicion"] == "visitante"],
+        }
+
+        for condicion, muestra in selecciones.items():
+            gf = float(muestra["_gf"].sum())
+            gc = float(muestra["_gc"].sum())
+
+            fila[f"pj_{condicion}"] = len(muestra)
+            fila[f"puntos_{condicion}"] = int(
+                muestra["_puntos"].sum()
+            )
+            fila[f"dg_{condicion}"] = gf - gc
+            fila[f"gf_{condicion}"] = gf
+
+        filas_tabla.append(fila)
+        partidos[equipo] = df
+
+    clasificacion = pd.DataFrame(filas_tabla)
+
+    # Regla técnica de desempate:
+    # puntos, diferencia de goles, goles a favor y equipo.
+    for condicion in ["general", "local", "visitante"]:
+        orden = clasificacion.sort_values(
+            [
+                f"puntos_{condicion}",
+                f"dg_{condicion}",
+                f"gf_{condicion}",
+                "equipo",
+            ],
+            ascending=[False, False, False, True],
+            kind="stable",
+        )
+
+        posiciones = pd.Series(
+            np.arange(1, len(orden) + 1),
+            index=orden["equipo"],
+        )
+
+        clasificacion[f"posicion_{condicion}"] = (
+            clasificacion["equipo"]
+            .map(posiciones)
+            .astype(int)
+        )
+
+    clasificacion = clasificacion.sort_values(
+        "posicion_general"
+    ).reset_index(drop=True)
+
+    clasificacion["cuarto"] = 0
+    rangos = {}
+
+    for cuarto, indices in enumerate(
+        np.array_split(np.arange(len(clasificacion)), 4),
+        start=1,
+    ):
+        clasificacion.loc[indices, "cuarto"] = cuarto
+
+        inicio = int(
+            clasificacion.loc[indices[0], "posicion_general"]
+        )
+        fin = int(
+            clasificacion.loc[indices[-1], "posicion_general"]
+        )
+
+        rangos[cuarto] = f"{inicio}–{fin}"
+
+    return {
+        "clasificacion": clasificacion,
+        "partidos": partidos,
+        "rangos": rangos,
+        "avisos": avisos,
+    }
+
+
+def _tabla_rendimiento_cuartos(equipo, condicion, datos):
+    clasificacion = datos["clasificacion"]
+
+    cuarto_por_equipo = clasificacion.set_index(
+        "equipo"
+    )["cuarto"]
+
+    df = datos["partidos"][equipo].copy()
+    df = df.loc[df["_condicion"] == condicion].copy()
+
+    df["_cuarto_rival"] = df["_rival_id"].map(
+        cuarto_por_equipo
+    )
+
+    metricas = {
+        "Rem. favor": "shots_favor",
+        "Rem. contra": "shots_contra",
+        "Rem. totales": "_remates_total",
+        "A puerta favor": "a_puerta_favor",
+        "A puerta contra": "a_puerta_contra",
+        "A puerta totales": "_sot_total",
+    }
+
+    filas = []
+
+    for cuarto in range(1, 5):
+        muestra = df.loc[df["_cuarto_rival"] == cuarto]
+
+        fila = {
+            "Cuarto": cuarto,
+            "Puestos": datos["rangos"][cuarto],
+            "PJ": len(muestra),
+        }
+
+        conteos = []
+
+        for etiqueta, columna in metricas.items():
+            valores = muestra[columna].dropna()
+
+            fila[etiqueta] = (
+                float(valores.mean())
+                if not valores.empty else np.nan
+            )
+            conteos.append(len(valores))
+
+        minimo = min(conteos)
+
+        if muestra.empty:
+            fila["Muestra"] = "Sin partidos"
+        elif minimo == 0:
+            fila["Muestra"] = "Faltan estadísticas"
+        elif minimo < 3:
+            fila["Muestra"] = "Muy pequeña"
+        else:
+            fila["Muestra"] = "3+ datos por métrica"
+
+        # Hace visible si las medias usan menos datos que los PJ.
+        fila["N mín. métricas"] = minimo
+
+        filas.append(fila)
+
+    no_clasificados = int(df["_cuarto_rival"].isna().sum())
+
+    return pd.DataFrame(filas), no_clasificados
+
+
+def generar_analisis_cuartos(
+    equipo_local,
+    equipo_visitante,
+    mapa_equipos,
+):
+    """
+    Nueva sección descriptiva.
+
+    Usa la temporada completa y no altera predicciones existentes.
+    Los rivales se agrupan por su clasificación general actual.
+    """
+    catalogo = _leer_catalogo_contexto()
+
+    equipo_local = str(equipo_local).strip().lower()
+    equipo_visitante = str(equipo_visitante).strip().lower()
+
+    def division_de(equipo):
+        divisiones = (
+            catalogo.loc[
+                catalogo["equipo"] == equipo,
+                "division"
+            ]
+            .dropna()
+            .drop_duplicates()
+        )
+
+        if len(divisiones) != 1:
+            raise ValueError(
+                f"{equipo}: debe tener una única división "
+                "en enlaces_equipos.xlsx."
+            )
+
+        return divisiones.iloc[0]
+
+    division_local = division_de(equipo_local)
+    division_vis = division_de(equipo_visitante)
+
+    datos_divisiones = {}
+
+    for division in dict.fromkeys([division_local, division_vis]):
+        datos_divisiones[division] = _cargar_division_cuartos(
+            division, catalogo, mapa_equipos
+        )
+
+    datos_local = datos_divisiones[division_local]
+    datos_vis = datos_divisiones[division_vis]
+
+    tablas_resumen = []
+
+    for equipo, condicion, division, datos in [
+        (equipo_local, "local", division_local, datos_local),
+        (equipo_visitante, "visitante", division_vis, datos_vis),
+    ]:
+        fila = (
+            datos["clasificacion"]
+            .set_index("equipo")
+            .loc[equipo]
+        )
+
+        tablas_resumen.append({
+            "Equipo": mapa_equipos.get(equipo, equipo),
+            "División": division,
+            "Condición": condicion.capitalize(),
+            "PJ general": int(fila["pj_general"]),
+            "Puntos general": int(fila["puntos_general"]),
+            "Pos. general": int(fila["posicion_general"]),
+            "Cuarto general": int(fila["cuarto"]),
+            "PJ condición": int(fila[f"pj_{condicion}"]),
+            "Puntos condición": int(fila[f"puntos_{condicion}"]),
+            "Pos. condición": int(fila[f"posicion_{condicion}"]),
+        })
+
+    tabla_local, sin_clasificar_local = _tabla_rendimiento_cuartos(
+        equipo_local, "local", datos_local
+    )
+    tabla_vis, sin_clasificar_vis = _tabla_rendimiento_cuartos(
+        equipo_visitante, "visitante", datos_vis
+    )
+
+    avisos = []
+
+    for datos in datos_divisiones.values():
+        avisos.extend(datos["avisos"])
+
+    if sin_clasificar_local:
+        avisos.append(
+            f"Local: {sin_clasificar_local} partidos de casa "
+            "sin cuarto de rival."
+        )
+
+    if sin_clasificar_vis:
+        avisos.append(
+            f"Visitante: {sin_clasificar_vis} partidos fuera "
+            "sin cuarto de rival."
+        )
+
+    misma_division = division_local == division_vis
+
+    # Entre divisiones distintas mostramos los históricos,
+    # pero no equiparamos automáticamente sus cuartos.
+    cuarto_objetivo_local = None
+    cuarto_objetivo_vis = None
+
+    if misma_division:
+        posiciones = datos_local["clasificacion"].set_index(
+            "equipo"
+        )
+
+        cuarto_objetivo_local = int(
+            posiciones.loc[equipo_visitante, "cuarto"]
+        )
+        cuarto_objetivo_vis = int(
+            posiciones.loc[equipo_local, "cuarto"]
+        )
+    else:
+        avisos.append(
+            "Equipos de divisiones distintas: se muestran sus "
+            "históricos por separado, sin resaltar un cuarto "
+            "equivalente del próximo rival."
+        )
+
+    return {
+        "resumen": pd.DataFrame(tablas_resumen),
+        "local": tabla_local,
+        "visitante": tabla_vis,
+        "cuarto_objetivo_local": cuarto_objetivo_local,
+        "cuarto_objetivo_visitante": cuarto_objetivo_vis,
+        "avisos": list(dict.fromkeys(avisos)),
+    }

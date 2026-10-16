@@ -13,7 +13,7 @@ from partidos_manager import (
     inicializar_lista_partidos,
     mostrar_boton_agregar_partido
 )
-from contexto_liga import (aplicar_contexto_goles, preparar_contexto_remates_sot)
+from contexto_liga import (aplicar_contexto_goles, preparar_contexto_remates_sot, generar_analisis_cuartos)
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -4268,6 +4268,112 @@ def resaltar_estadistica(df_stats):
 archivos = [f.replace(".xlsx", "") for f in os.listdir("new-stats/") if f.endswith(".xlsx")]
 equipos_disponibles = sorted(archivos)
 
+def mostrar_analisis_cuartos(
+    equipo_local,
+    equipo_visitante,
+    mapa_equipos,
+):
+    st.markdown("## 📊 Rendimiento según clasificación del rival")
+
+    try:
+        analisis = generar_analisis_cuartos(
+            equipo_local=equipo_local,
+            equipo_visitante=equipo_visitante,
+            mapa_equipos=mapa_equipos,
+        )
+
+    except (OSError, ValueError, KeyError) as error:
+        st.warning(
+            f"No se pudo construir el análisis por cuartos: {error}"
+        )
+        return
+
+    st.markdown("### 🏆 Posiciones y puntos de la temporada")
+
+    st.table(
+        analisis["resumen"].style
+        .hide(axis="index")
+    )
+
+    columnas_medias = [
+        "Rem. favor",
+        "Rem. contra",
+        "Rem. totales",
+        "A puerta favor",
+        "A puerta contra",
+        "A puerta totales",
+    ]
+
+    def estilo_cuartos(df, cuarto_objetivo):
+        def color_fila(fila):
+            if (
+                cuarto_objetivo is not None
+                and fila["Cuarto"] == cuarto_objetivo
+            ):
+                return [
+                    "background-color: #fff3cd; color: #333333"
+                ] * len(fila)
+
+            return [""] * len(fila)
+
+        return (
+            df.style
+            .apply(color_fila, axis=1)
+            .format(
+                {
+                    columna: "{:.1f}"
+                    for columna in columnas_medias
+                },
+                na_rep="Sin datos",
+            )
+            .hide(axis="index")
+        )
+
+    nombre_local = mapa_equipos.get(
+        equipo_local, equipo_local
+    )
+    nombre_vis = mapa_equipos.get(
+        equipo_visitante, equipo_visitante
+    )
+
+    # Una debajo de la otra para no comprimir tantas columnas.
+    st.markdown(
+        f"### 🏠 {nombre_local.title()} — partidos como local"
+    )
+
+    st.table(
+        estilo_cuartos(
+            analisis["local"],
+            analisis["cuarto_objetivo_local"],
+        )
+    )
+
+    st.markdown(
+        f"### ✈️ {nombre_vis.title()} — partidos como visitante"
+    )
+
+    st.table(
+        estilo_cuartos(
+            analisis["visitante"],
+            analisis["cuarto_objetivo_visitante"],
+        )
+    )
+
+    st.caption(
+        "Temporada completa. Los cuartos corresponden a la "
+        "clasificación general actual de los rivales. "
+        "La fila resaltada corresponde al cuarto del próximo rival "
+        "cuando ambos equipos pertenecen a la misma división. "
+        "PJ = partidos del grupo. N mín. métricas = menor cantidad "
+        "de datos válidos utilizada entre las seis medias. "
+        "Esta sección no modifica las probabilidades existentes."
+    )
+
+    if analisis["avisos"]:
+        with st.expander("⚠️ Revisar cobertura e identificación de datos"):
+            for aviso in analisis["avisos"]:
+                st.write(f"• {aviso}")
+
 # === UI SELECCIÓN ===
 col1, col2 = st.columns(2)
 with col1:
@@ -4695,6 +4801,12 @@ if equipo_local_nombre and equipo_visitante_nombre:
             )
 
         st.caption(estado_contexto)
+        
+        mostrar_analisis_cuartos(
+            equipo_local=equipo_local_nombre,
+            equipo_visitante=equipo_visitante_nombre,
+            mapa_equipos=mapa_equipos,
+        )
     
     # Definición de las columnas a mostrar basado en el rango seleccionado
     cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
