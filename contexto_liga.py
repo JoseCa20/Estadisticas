@@ -529,25 +529,80 @@ def _referencia_goles_division(
     ].mean().to_dict()
 
 
-def _mercados_poisson_contexto(lambda_local, lambda_vis):
-    total = lambda_local + lambda_vis
+def _mercados_poisson_contexto(lambda_local, lambda_vis): 
+    lambda_local = float(lambda_local)
+    lambda_vis = float(lambda_vis)
 
-    local = float(skellam.sf(0, lambda_local, lambda_vis))
-    empate = float(skellam.pmf(0, lambda_local, lambda_vis))
-    visita = float(skellam.cdf(-1, lambda_local, lambda_vis))
+    if (
+        not np.isfinite(lambda_local)
+        or not np.isfinite(lambda_vis)
+        or lambda_local < 0
+        or lambda_vis < 0
+    ):
+        raise ValueError(
+            "Los lambdas deben ser finitos y no negativos."
+        )
 
-    marca_local = float(poisson.sf(0, lambda_local))
-    marca_vis = float(poisson.sf(0, lambda_vis))
+    if lambda_local == 0 and lambda_vis == 0:
+        p_local = 0.0
+        p_empate = 1.0
+        p_vis = 0.0
+
+    elif lambda_local == 0:
+        p_local = 0.0
+        p_empate = float(poisson.pmf(0, lambda_vis))
+        p_vis = float(poisson.sf(0, lambda_vis))
+
+    elif lambda_vis == 0:
+        p_local = float(poisson.sf(0, lambda_local))
+        p_empate = float(poisson.pmf(0, lambda_local))
+        p_vis = 0.0
+
+    else:
+        p_local = float(
+            skellam.sf(0, lambda_local, lambda_vis)
+        )
+        p_empate = float(
+            skellam.pmf(0, lambda_local, lambda_vis)
+        )
+        p_vis = float(
+            skellam.cdf(-1, lambda_local, lambda_vis)
+        )
+
+    probabilidades = np.clip(
+        np.array([p_local, p_empate, p_vis], dtype=float),
+        0.0,
+        1.0,
+    )
+
+    probabilidades /= probabilidades.sum()
+    p_local, p_empate, p_vis = probabilidades
+
+    p_marca_local = float(poisson.sf(0, lambda_local))
+    p_marca_vis = float(poisson.sf(0, lambda_vis))
+
+    lambda_total = lambda_local + lambda_vis
 
     return {
-        "Gana Local": 100 * local,
-        "Empate": 100 * empate,
-        "Gana Visitante": 100 * visita,
-        "Marca Local": 100 * marca_local,
-        "Marca Visitante": 100 * marca_vis,
-        "BTTS": 100 * marca_local * marca_vis,
-        "Over 1.5": 100 * float(poisson.sf(1, total)),
-        "Over 2.5": 100 * float(poisson.sf(2, total)),
+        "Gana Local": 100.0 * p_local,
+        "Empate": 100.0 * p_empate,
+        "Gana Visitante": 100.0 * p_vis,
+
+        "1X": 100.0 * (p_local + p_empate),
+        "X2": 100.0 * (p_empate + p_vis),
+        "12": 100.0 * (p_local + p_vis),
+
+        "Marca Local": 100.0 * p_marca_local,
+        "Marca Visitante": 100.0 * p_marca_vis,
+
+        "BTTS": 100.0 * p_marca_local * p_marca_vis,
+
+        "Over 1.5": 100.0 * float(
+            poisson.sf(1, lambda_total)
+        ),
+        "Over 2.5": 100.0 * float(
+            poisson.sf(2, lambda_total)
+        ),
     }
 
 
@@ -561,151 +616,194 @@ def aplicar_contexto_goles(
     intensidad=0.10,
 ):
     """
-    Devuelve (prediccion_final, estado).
+    Aplica contexto una sola vez sobre los lambdas base.
 
-    No modifica prediccion.
-    intensidad=0.10 limita cada factor a aproximadamente ±10%.
-    Las rachas ya están incorporadas en prediccion.
+    Mantiene el criterio existente de marca/recibe de liga.
+    No altera el diccionario original.
     """
     base = dict(prediccion)
-    final = dict(prediccion)
+
+    lambda_local = _numero_contexto(
+        base.get("_lambda_local_base")
+    )
+    lambda_vis = _numero_contexto(
+        base.get("_lambda_visitante_base")
+    )
+
+    if (
+        lambda_local is None
+        or lambda_vis is None
+        or lambda_local < 0
+        or lambda_vis < 0
+    ):
+        return (
+            base,
+            "Sin contexto: faltan lambdas base válidos."
+        )
 
     try:
+        if int(base.get("_rango", n_partidos)) != n_partidos:
+            return (
+                base,
+                "Sin contexto: el rango no coincide con el modelo base."
+            )
+
         catalogo = _leer_catalogo_contexto()
-    except (OSError, ValueError) as error:
-        return final, f"Sin contexto: {error}"
 
-    equipo_local = str(equipo_local).strip().lower()
-    equipo_visitante = str(equipo_visitante).strip().lower()
+        equipo_local = str(equipo_local).strip().lower()
+        equipo_visitante = str(equipo_visitante).strip().lower()
 
-    def division_equipo(equipo):
-        filas = catalogo.loc[
-            (catalogo["equipo"] == equipo)
-            & (catalogo["analizar"] == "si"),
-            "division"
-        ].dropna()
+        def division_equipo(equipo):
+            divisiones = (
+                catalogo.loc[
+                    (catalogo["equipo"] == equipo)
+                    & (catalogo["analizar"] == "si"),
+                    "division"
+                ]
+                .dropna()
+                .drop_duplicates()
+            )
 
-        return filas.iloc[0] if not filas.empty else None
+            if len(divisiones) != 1:
+                return None
 
-    division_local = division_equipo(equipo_local)
-    division_vis = division_equipo(equipo_visitante)
+            return divisiones.iloc[0]
 
-    if division_local is None or division_vis is None:
-        return final, "Sin contexto: equipo sin división analizable."
+        division_local = division_equipo(equipo_local)
+        division_vis = division_equipo(equipo_visitante)
 
-    resumen_local = _resumen_goles_contexto(
-        df_local, "local", n_partidos
-    )
-    resumen_vis = _resumen_goles_contexto(
-        df_visitante, "visitante", n_partidos
-    )
+        if division_local is None or division_vis is None:
+            return (
+                base,
+                "Sin contexto: falta una división analizable única."
+            )
 
-    referencia_local = _referencia_goles_division(
-        catalogo, division_local, "local",
-        n_partidos, equipo_local
-    )
-    referencia_vis = _referencia_goles_division(
-        catalogo, division_vis, "visitante",
-        n_partidos, equipo_visitante
-    )
-
-    resumenes = [resumen_local, resumen_vis]
-    referencias = [referencia_local, referencia_vis]
-
-    if any(valor is None for valor in resumenes + referencias):
-        return final, "Sin contexto: referencia de liga insuficiente."
-
-    if min(resumen_local["muestra"], resumen_vis["muestra"]) < 3:
-        return final, "Sin contexto: menos de 3 partidos por equipo."
-
-    claves = [
-        "Gana Local", "Empate", "Gana Visitante",
-        "Marca Local", "Marca Visitante", "BTTS",
-        "Over 1.5", "Over 2.5"
-    ]
-
-    numeros = {clave: _numero_contexto(base.get(clave)) for clave in claves}
-
-    if any(valor is None for valor in numeros.values()):
-        return final, "Sin contexto: faltan probabilidades base."
-
-    def ataque(resumen, referencia):
-        return 0.5 * (
-            (resumen["marca"] - referencia["marca"])
-            - (resumen["no_marca"] - referencia["no_marca"])
+        # Usa las mismas filas válidas que alimentaron el núcleo.
+        # Se guardan como argumentos explícitos al llamar a esta función.
+        resumen_local = _resumen_goles_contexto(
+            df_local,
+            "local",
+            n_partidos,
         )
 
-    def concesion(resumen, referencia):
-        return 0.5 * (
-            (resumen["recibe"] - referencia["recibe"])
-            - (resumen["no_recibe"] - referencia["no_recibe"])
+        resumen_vis = _resumen_goles_contexto(
+            df_visitante,
+            "visitante",
+            n_partidos,
         )
 
-    señal_local = 0.5 * (
-        ataque(resumen_local, referencia_local)
-        + concesion(resumen_vis, referencia_vis)
-    )
-    señal_vis = 0.5 * (
-        ataque(resumen_vis, referencia_vis)
-        + concesion(resumen_local, referencia_local)
-    )
+        referencia_local = _referencia_goles_division(
+            catalogo,
+            division_local,
+            "local",
+            n_partidos,
+            equipo_local,
+        )
 
-    confianza = min(
-        1.0,
-        min(resumen_local["muestra"], resumen_vis["muestra"]) / 10
-    )
+        referencia_vis = _referencia_goles_division(
+            catalogo,
+            division_vis,
+            "visitante",
+            n_partidos,
+            equipo_visitante,
+        )
 
-    intensidad = float(np.clip(intensidad, 0, 0.20))
+        if any(
+            valor is None
+            for valor in [
+                resumen_local,
+                resumen_vis,
+                referencia_local,
+                referencia_vis,
+            ]
+        ):
+            return (
+                base,
+                "Sin contexto: referencia de liga insuficiente."
+            )
 
-    factor_local = 1 + intensidad * confianza * señal_local
-    factor_vis = 1 + intensidad * confianza * señal_vis
+        if min(
+            resumen_local["muestra"],
+            resumen_vis["muestra"],
+        ) < 3:
+            return (
+                base,
+                "Sin contexto: menos de tres partidos válidos "
+                "en alguna condición."
+            )
 
-    p_local = np.clip(numeros["Marca Local"] / 100, 0.001, 0.999)
-    p_vis = np.clip(numeros["Marca Visitante"] / 100, 0.001, 0.999)
+        def ataque(resumen, referencia):
+            return 0.5 * (
+                resumen["marca"] - referencia["marca"]
+                - resumen["no_marca"] + referencia["no_marca"]
+            )
 
-    lambda_local = -np.log1p(-p_local)
-    lambda_vis = -np.log1p(-p_vis)
+        def concesion(resumen, referencia):
+            return 0.5 * (
+                resumen["recibe"] - referencia["recibe"]
+                - resumen["no_recibe"] + referencia["no_recibe"]
+            )
 
-    antes = _mercados_poisson_contexto(lambda_local, lambda_vis)
-    despues = _mercados_poisson_contexto(
-        lambda_local * factor_local,
-        lambda_vis * factor_vis
-    )
+        señal_local = 0.5 * (
+            ataque(resumen_local, referencia_local)
+            + concesion(resumen_vis, referencia_vis)
+        )
 
-    for clave in claves:
-        cambio = despues[clave] - antes[clave]
-        final[clave] = float(np.clip(numeros[clave] + cambio, 0, 100))
+        señal_vis = 0.5 * (
+            ataque(resumen_vis, referencia_vis)
+            + concesion(resumen_local, referencia_local)
+        )
 
-    claves_1x2 = ["Gana Local", "Empate", "Gana Visitante"]
-    total_1x2 = sum(final[clave] for clave in claves_1x2)
+        confianza = min(
+            1.0,
+            min(
+                resumen_local["muestra"],
+                resumen_vis["muestra"],
+            ) / 10.0,
+        )
 
-    if total_1x2 <= 0:
-        return base, "Sin contexto: mercado 1X2 inválido."
+        intensidad = float(np.clip(intensidad, 0.0, 0.20))
 
-    for clave in claves_1x2:
-        final[clave] = 100 * final[clave] / total_1x2
+        factor_local = (
+            1.0 + intensidad * confianza * señal_local
+        )
+        factor_vis = (
+            1.0 + intensidad * confianza * señal_vis
+        )
 
-    final["1X"] = final["Gana Local"] + final["Empate"]
-    final["X2"] = final["Gana Visitante"] + final["Empate"]
-    final["12"] = final["Gana Local"] + final["Gana Visitante"]
+        lambda_local_final = lambda_local * factor_local
+        lambda_vis_final = lambda_vis * factor_vis
 
-    final["BTTS"] = min(
-        final["BTTS"],
-        final["Marca Local"],
-        final["Marca Visitante"],
-        final["Over 1.5"]
-    )
-    final["Over 2.5"] = min(
-        final["Over 2.5"], final["Over 1.5"]
-    )
+        final = dict(base)
 
-    estado = (
-        f"Contexto aplicado. "
-        f"Factor local: {factor_local:.3f}; "
-        f"factor visitante: {factor_vis:.3f}."
-    )
+        final.update(
+            _mercados_poisson_contexto(
+                lambda_local_final,
+                lambda_vis_final,
+            )
+        )
 
-    return final, estado
+        final.update({
+            "_lambda_local_contexto": lambda_local_final,
+            "_lambda_visitante_contexto": lambda_vis_final,
+            "_factor_contexto_local": factor_local,
+            "_factor_contexto_visitante": factor_vis,
+        })
+
+        estado = (
+            f"Contexto aplicado. "
+            f"Factor local: {factor_local:.3f}; "
+            f"factor visitante: {factor_vis:.3f}. "
+            f"Lambda local: {lambda_local:.3f} "
+            f"→ {lambda_local_final:.3f}; "
+            f"lambda visitante: {lambda_vis:.3f} "
+            f"→ {lambda_vis_final:.3f}."
+        )
+
+        return final, estado
+
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return base, f"Sin contexto: {error}"
 
 # ==========================================================
 # CONTEXTO DE REMATES Y TIROS A PUERTA
@@ -1535,3 +1633,85 @@ def generar_analisis_cuartos(
         "cuarto_objetivo_visitante": cuarto_objetivo_vis,
         "avisos": list(dict.fromkeys(avisos)),
     }
+    
+def predecir_goles_desde_entradas(
+    entrada_local,
+    entrada_visitante,
+):
+    """
+    Modelo de referencia basado en volumen de goles.
+
+    Usa exclusivamente la ventana y condición de cada entrada.
+    No añade bonos por rachas ni ajustes de probabilidad posteriores.
+    """
+    if entrada_local["condicion"] != "local":
+        raise ValueError(
+            "La entrada local debe corresponder a partidos en casa."
+        )
+
+    if entrada_visitante["condicion"] != "visitante":
+        raise ValueError(
+            "La entrada visitante debe corresponder a partidos fuera."
+        )
+
+    if (
+        entrada_local["rango_solicitado"]
+        != entrada_visitante["rango_solicitado"]
+    ):
+        raise ValueError(
+            "Ambas entradas deben utilizar el mismo rango solicitado."
+        )
+
+    n_local = int(entrada_local["n_partidos"])
+    n_vis = int(entrada_visitante["n_partidos"])
+
+    if n_local < 1 or n_vis < 1:
+        raise ValueError(
+            "Se necesita al menos un partido válido por equipo."
+        )
+
+    valores = {
+        "gf_local": entrada_local["media_goles_favor"],
+        "gc_local": entrada_local["media_goles_contra"],
+        "gf_vis": entrada_visitante["media_goles_favor"],
+        "gc_vis": entrada_visitante["media_goles_contra"],
+    }
+
+    for nombre, valor in valores.items():
+        numero = _numero_contexto(valor)
+
+        if numero is None or numero < 0:
+            raise ValueError(
+                f"Media de goles inválida: {nombre}."
+            )
+
+        valores[nombre] = numero
+
+    lambda_local = 0.50 * (
+        valores["gf_local"] + valores["gc_vis"]
+    )
+
+    lambda_vis = 0.50 * (
+        valores["gf_vis"] + valores["gc_local"]
+    )
+
+    prediccion = _mercados_poisson_contexto(
+        lambda_local,
+        lambda_vis,
+    )
+
+    prediccion.update({
+        "_modelo": "volumen_cruzado_50_50",
+        "_lambda_local_base": lambda_local,
+        "_lambda_visitante_base": lambda_vis,
+        "_n_local": n_local,
+        "_n_visitante": n_vis,
+        "_rango": int(entrada_local["rango_solicitado"]),
+
+        "_media_gf_local": valores["gf_local"],
+        "_media_gc_local": valores["gc_local"],
+        "_media_gf_visitante": valores["gf_vis"],
+        "_media_gc_visitante": valores["gc_vis"],
+    })
+
+    return prediccion

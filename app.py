@@ -11,9 +11,12 @@ from io import BytesIO
 from datetime import datetime
 from partidos_manager import (
     inicializar_lista_partidos,
-    mostrar_boton_agregar_partido
+    mostrar_boton_agregar_partido,
 )
-from contexto_liga import (aplicar_contexto_goles, preparar_contexto_remates_sot, generar_analisis_cuartos)
+from contexto_liga import (aplicar_contexto_goles, 
+                           preparar_contexto_remates_sot, 
+                           generar_analisis_cuartos,
+                           predecir_goles_desde_entradas)
 
 # === CONFIGURACIÓN ===
 st.set_page_config(page_title="Predicción de Partido", layout="wide")
@@ -2189,6 +2192,426 @@ def extraer_metricas_gol(stats, equipo_nombre, rango):
         "no_recibe_racha": racha("No Recibe Gol"),
         "no_recibe_max": racha("Máx. Racha No Recibe"),
     }
+    
+def extraer_entrada_goles(df, condicion, rango):    
+    if condicion not in ("local", "visitante"):
+        raise ValueError(
+            "La condición debe ser 'local' o 'visitante'."
+        )        
+
+    if rango not in (3, 5, 10):
+        raise ValueError(
+            "El rango debe ser 3, 5 o 10."
+        )
+
+    if df is None or df.empty:
+        raise ValueError(
+            f"No hay partidos disponibles para la condición {condicion}."
+        )
+
+    col_favor = (
+        "goles_local"
+        if condicion == "local"
+        else "goles_visitante"
+    )
+
+    col_contra = (
+        "goles_visitante"
+        if condicion == "local"
+        else "goles_local"
+    )
+
+    faltantes = {
+        col_favor, col_contra
+    } - set(df.columns)
+
+    if faltantes:
+        raise ValueError(
+            "Faltan columnas de goles: "
+            + ", ".join(sorted(faltantes))
+        )
+
+    datos = df.copy()
+
+    favor = pd.to_numeric(
+        datos[col_favor],
+        errors="coerce",
+    )
+
+    contra = pd.to_numeric(
+        datos[col_contra],
+        errors="coerce",
+    )
+
+    validos = (
+        favor.notna()
+        & contra.notna()
+        & np.isfinite(favor)
+        & np.isfinite(contra)
+        & (favor >= 0)
+        & (contra >= 0)
+        & (favor == np.floor(favor))
+        & (contra == np.floor(contra))
+    )
+
+    filas_invalidas = int((~validos).sum())
+
+    datos = datos.loc[validos].copy()
+    datos["_gf_modelo"] = favor.loc[validos].astype(int)
+    datos["_gc_modelo"] = contra.loc[validos].astype(int)
+
+    muestra = datos.tail(rango).copy()
+
+    if muestra.empty:
+        raise ValueError(
+            f"No hay marcadores válidos para {condicion}, U{rango}."
+        )
+
+    gf = muestra["_gf_modelo"]
+    gc = muestra["_gc_modelo"]
+    total = gf + gc
+
+    n = len(muestra)
+
+    def resumen_evento(condicion_evento):
+        """
+        Frecuencia histórica y rachas dentro de la misma ventana.
+        """
+        secuencia = condicion_evento.astype(bool).tolist()
+
+        actual = 0
+
+        for cumple in reversed(secuencia):
+            if not cumple:
+                break
+            actual += 1
+
+        maxima = 0
+        acumulada = 0
+
+        for cumple in secuencia:
+            if cumple:
+                acumulada += 1
+                maxima = max(maxima, acumulada)
+            else:
+                acumulada = 0
+
+        aciertos = int(sum(secuencia))
+
+        return {
+            "hits": aciertos,
+            "pct": 100.0 * aciertos / n,
+            "racha_actual": actual,
+            "racha_max": maxima,
+        }
+
+    eventos = {
+        "marca": resumen_evento(gf >= 1),
+        "recibe": resumen_evento(gc >= 1),
+        "no_marca": resumen_evento(gf == 0),
+        "no_recibe": resumen_evento(gc == 0),
+
+        "marca_2mas": resumen_evento(gf >= 2),
+        "recibe_2mas": resumen_evento(gc >= 2),
+        "marca_3mas": resumen_evento(gf >= 3),
+        "recibe_3mas": resumen_evento(gc >= 3),
+
+        "btts": resumen_evento((gf >= 1) & (gc >= 1)),
+        "over_15": resumen_evento(total >= 2),
+        "over_25": resumen_evento(total >= 3),
+    }
+
+    media_goles_cuando_marca = (
+        float(gf.loc[gf >= 1].mean())
+        if (gf >= 1).any()
+        else None
+    )
+
+    media_goles_cuando_recibe = (
+        float(gc.loc[gc >= 1].mean())
+        if (gc >= 1).any()
+        else None
+    )
+
+    columnas_detalle = [
+        columna
+        for columna in ["fecha", "equipo_local", "visitante"]
+        if columna in muestra.columns
+    ]
+
+    detalle = muestra[columnas_detalle].copy()
+
+    detalle["Goles favor"] = gf.to_numpy()
+    detalle["Goles contra"] = gc.to_numpy()
+    detalle["Goles totales"] = total.to_numpy()
+
+    return {
+        "condicion": condicion,
+        "rango_solicitado": rango,
+        "n_partidos": n,
+        "n_validos_disponibles": len(datos),
+        "filas_invalidas": filas_invalidas,
+
+        "goles_favor_total": int(gf.sum()),
+        "goles_contra_total": int(gc.sum()),
+
+        "media_goles_favor": float(gf.mean()),
+        "media_goles_contra": float(gc.mean()),
+        "media_goles_total": float(total.mean()),
+
+        "media_goles_cuando_marca": media_goles_cuando_marca,
+        "media_goles_cuando_recibe": media_goles_cuando_recibe,
+
+        "std_goles_favor": (
+            float(gf.std(ddof=1)) if n > 1 else None
+        ),
+        "std_goles_contra": (
+            float(gc.std(ddof=1)) if n > 1 else None
+        ),
+
+        "eventos": eventos,
+
+        "goles_favor": gf.tolist(),
+        "goles_contra": gc.tolist(),
+
+        "detalle": detalle.reset_index(drop=True),
+        "datos_modelo": muestra.copy(),
+    }
+    
+def mostrar_diagnostico_entrada_goles(
+    entrada_local,
+    entrada_visitante,
+    nombre_local,
+    nombre_visitante,
+):
+    def resumen_columna(entrada):
+        eventos = entrada["eventos"]
+
+        return {
+            "Rango solicitado": entrada["rango_solicitado"],
+            "Partidos utilizados": entrada["n_partidos"],
+
+            "Goles favor": entrada["goles_favor_total"],
+            "Goles contra": entrada["goles_contra_total"],
+
+            "Media goles favor": entrada["media_goles_favor"],
+            "Media goles contra": entrada["media_goles_contra"],
+            "Media goles totales": entrada["media_goles_total"],
+
+            "Media cuando marca": (
+                entrada["media_goles_cuando_marca"]
+            ),
+            "Media cuando recibe": (
+                entrada["media_goles_cuando_recibe"]
+            ),
+
+            "Marca %": eventos["marca"]["pct"],
+            "Marca: racha actual": (
+                eventos["marca"]["racha_actual"]
+            ),
+            "Marca: racha máxima": (
+                eventos["marca"]["racha_max"]
+            ),
+
+            "Recibe %": eventos["recibe"]["pct"],
+            "Recibe: racha actual": (
+                eventos["recibe"]["racha_actual"]
+            ),
+            "Recibe: racha máxima": (
+                eventos["recibe"]["racha_max"]
+            ),
+
+            "No marca %": eventos["no_marca"]["pct"],
+            "No recibe %": eventos["no_recibe"]["pct"],
+
+            "Marca 2+ %": eventos["marca_2mas"]["pct"],
+            "Recibe 2+ %": eventos["recibe_2mas"]["pct"],
+            "Marca 3+ %": eventos["marca_3mas"]["pct"],
+            "Recibe 3+ %": eventos["recibe_3mas"]["pct"],
+
+            "BTTS histórico %": eventos["btts"]["pct"],
+            "Over 1.5 histórico %": eventos["over_15"]["pct"],
+            "Over 2.5 histórico %": eventos["over_25"]["pct"],
+
+            "Filas inválidas en DF recibido": (
+                entrada["filas_invalidas"]
+            ),
+        }
+
+    nombre_col_local = f"{nombre_local} · Local"
+    nombre_col_vis = f"{nombre_visitante} · Visitante"
+
+    tabla = pd.DataFrame({
+        nombre_col_local: resumen_columna(entrada_local),
+        nombre_col_vis: resumen_columna(entrada_visitante),
+    })
+
+    tabla.index.name = "Dato"
+    tabla = tabla.reset_index()
+
+    def formato_valor(valor):
+        if pd.isna(valor):
+            return "Sin datos"
+
+        numero = float(valor)
+
+        if numero.is_integer():
+            return str(int(numero))
+
+        return f"{numero:.2f}"
+
+    st.table(
+        tabla.style
+        .format({
+            nombre_col_local: formato_valor,
+            nombre_col_vis: formato_valor,
+        })
+        .hide(axis="index")
+    )
+
+    st.caption(
+        "Los porcentajes de esta tabla son frecuencias históricas "
+        "de la ventana seleccionada, no probabilidades futuras."
+    )
+
+    st.markdown("#### 🏠 Partidos utilizados del local")
+
+    st.table(
+        entrada_local["detalle"].style
+        .hide(axis="index")
+    )
+
+    st.markdown("#### ✈️ Partidos utilizados del visitante")
+
+    st.table(
+        entrada_visitante["detalle"].style
+        .hide(axis="index")
+    )
+    
+def mostrar_traza_modelo_goles(
+    prediccion,
+    prediccion_contexto,
+):
+    lambda_local_base = float(
+        prediccion["_lambda_local_base"]
+    )
+    lambda_vis_base = float(
+        prediccion["_lambda_visitante_base"]
+    )
+
+    lambda_local_final = float(
+        prediccion_contexto.get(
+            "_lambda_local_contexto",
+            lambda_local_base,
+        )
+    )
+    lambda_vis_final = float(
+        prediccion_contexto.get(
+            "_lambda_visitante_contexto",
+            lambda_vis_base,
+        )
+    )
+
+    factor_local = float(
+        prediccion_contexto.get(
+            "_factor_contexto_local",
+            1.0,
+        )
+    )
+    factor_vis = float(
+        prediccion_contexto.get(
+            "_factor_contexto_visitante",
+            1.0,
+        )
+    )
+
+    tabla_lambdas = pd.DataFrame([
+        {
+            "Equipo": "Local",
+            "PJ propios": prediccion["_n_local"],
+            "Media GF propia": prediccion["_media_gf_local"],
+            "Media GC del rival": (
+                prediccion["_media_gc_visitante"]
+            ),
+            "Lambda base": lambda_local_base,
+            "Factor contexto": factor_local,
+            "Lambda final": lambda_local_final,
+        },
+        {
+            "Equipo": "Visitante",
+            "PJ propios": prediccion["_n_visitante"],
+            "Media GF propia": (
+                prediccion["_media_gf_visitante"]
+            ),
+            "Media GC del rival": (
+                prediccion["_media_gc_local"]
+            ),
+            "Lambda base": lambda_vis_base,
+            "Factor contexto": factor_vis,
+            "Lambda final": lambda_vis_final,
+        },
+    ])
+
+    columnas_decimales = [
+        "Media GF propia",
+        "Media GC del rival",
+        "Lambda base",
+        "Factor contexto",
+        "Lambda final",
+    ]
+
+    st.table(
+        tabla_lambdas.style
+        .format({
+            columna: "{:.3f}"
+            for columna in columnas_decimales
+        })
+        .hide(axis="index")
+    )
+
+    filas_controles = []
+
+    for etiqueta, valores in [
+        ("Base", prediccion),
+        ("Con contexto", prediccion_contexto),
+    ]:
+        suma_1x2 = (
+            valores["Gana Local"]
+            + valores["Empate"]
+            + valores["Gana Visitante"]
+        )
+
+        filas_controles.append({
+            "Versión": etiqueta,
+            "Suma 1X2 %": suma_1x2,
+            "Over 1.5 %": valores["Over 1.5"],
+            "Over 2.5 %": valores["Over 2.5"],
+            "Exactamente 2 goles %": (
+                valores["Over 1.5"]
+                - valores["Over 2.5"]
+            ),
+            "BTTS %": valores["BTTS"],
+        })
+
+    controles = pd.DataFrame(filas_controles)
+
+    st.table(
+        controles.style
+        .format({
+            columna: "{:.2f}"
+            for columna in controles.columns
+            if columna != "Versión"
+        })
+        .hide(axis="index")
+    )
+
+    st.caption(
+        "Lambda base = 50% de la media de goles a favor propia "
+        "+ 50% de la media concedida por el rival. "
+        "Exactamente 2 goles = Over 1.5 − Over 2.5. "
+        "Los valores son salidas del modelo, no resultados "
+        "garantizados."
+    )
 
 def calcular_prediccion_marca_recibe(
     marca_gol_local_pct, racha_marca_local, max_racha_marca_local,
@@ -4636,195 +5059,223 @@ if equipo_local_nombre and equipo_visitante_nombre:
         
     rango_actual = st.session_state.partidos_rango
     
-    stats_local = calcular_estadisticas_y_rachas(df_local_all, equipo_local_nombre, "local")
-    stats_visitante = calcular_estadisticas_y_rachas(df_visitante_all, equipo_visitante_nombre, "visitante")
+    stats_local = calcular_estadisticas_y_rachas(
+        df_local_all,
+        equipo_local_nombre,
+        "local",
+    )
 
-    if stats_local and stats_visitante:          
-        if rango_actual == 10:
-            col_pct_local = f"{equipo_local_nombre} (10)"
-            col_pct_visitante = f"{equipo_visitante_nombre} (10)"
-            col_racha = "R10"
-        elif rango_actual == 5:
-            col_pct_local = f"{equipo_local_nombre} (5)"
-            col_pct_visitante = f"{equipo_visitante_nombre} (5)"
-            col_racha = "R5"
-        else: 
-            col_pct_local = f"{equipo_local_nombre} (3)"
-            col_pct_visitante = f"{equipo_visitante_nombre} (3)"
-            col_racha = "R3"
-               
-        metricas_local = extraer_metricas_gol(
-            stats_local,
-            equipo_local_nombre,
-            rango_actual,
-        )
+    stats_visitante = calcular_estadisticas_y_rachas(
+        df_visitante_all,
+        equipo_visitante_nombre,
+        "visitante",
+    )
 
-        metricas_visitante = extraer_metricas_gol(
-            stats_visitante,
-            equipo_visitante_nombre,
-            rango_actual,
-        )
-        
-        prediccion = calcular_prediccion_marca_recibe(
-            # Local
-            metricas_local["marca_pct"],
-            metricas_local["marca_racha"],
-            metricas_local["marca_max"],
+    if stats_local and stats_visitante:
+        entrada_goles_local = None
+        entrada_goles_visitante = None
 
-            metricas_local["recibe_pct"],
-            metricas_local["recibe_racha"],
-            metricas_local["recibe_max"],
-
-            metricas_local["no_marca_pct"],
-            metricas_local["no_marca_racha"],
-            metricas_local["no_marca_max"],
-
-            metricas_local["no_recibe_pct"],
-            metricas_local["no_recibe_racha"],
-            metricas_local["no_recibe_max"],
-
-            # Visitante
-            metricas_visitante["marca_pct"],
-            metricas_visitante["marca_racha"],
-            metricas_visitante["marca_max"],
-
-            metricas_visitante["recibe_pct"],
-            metricas_visitante["recibe_racha"],
-            metricas_visitante["recibe_max"],
-
-            metricas_visitante["no_marca_pct"],
-            metricas_visitante["no_marca_racha"],
-            metricas_visitante["no_marca_max"],
-
-            metricas_visitante["no_recibe_pct"],
-            metricas_visitante["no_recibe_racha"],
-            metricas_visitante["no_recibe_max"],
-            
-            df_local= df_local_all,
-            df_visitante= df_visitante_all,
-        )
-        
-        prediccion_contexto, estado_contexto = aplicar_contexto_goles(
-            prediccion=prediccion,
-            df_local=df_local_all,
-            df_visitante=df_visitante_all,
-            equipo_local=equipo_local_nombre,
-            equipo_visitante=equipo_visitante_nombre,
-            n_partidos=rango_actual,
-            intensidad=0.10,
-        )
-        
-        mercados_prediccion = [
-            ("Gana Local", "Gana Local"),
-            ("Empate", "Empate"),
-            ("Gana Visitante", "Gana Visitante"),
-            ("Local o Empate 1X", "1X"),
-            ("Visitante o Empate X2", "X2"),
-            ("Gana Cualquiera 12", "12"),
-            ("Marca Local", "Marca Local"),
-            ("Marca Visitante", "Marca Visitante"),
-            ("BTTS", "BTTS"),
-            ("Over 1.5 Goles", "Over 1.5"),
-            ("Over 2.5 Goles", "Over 2.5"),
-        ]
-
-        filas_prediccion = []
-
-        for etiqueta, clave in mercados_prediccion:
-            prob_base = float(prediccion[clave])
-            prob_final = float(
-                prediccion_contexto.get(clave, prob_base)
+        try:
+            entrada_goles_local = extraer_entrada_goles(
+                df=df_local_all,
+                condicion="local",
+                rango=rango_actual,
             )
 
-            filas_prediccion.append({
-                "Métrica": etiqueta,
-                "Prob. %": prob_base,
-                "Prob. final %": prob_final,
-            })
-
-        df_prediccion = pd.DataFrame(filas_prediccion)
-        
-        columnas_prediccion = [
-            "Métrica",
-            "Prob. %",
-            "Prob. final %"
-        ]
-
-        col_pred1, col_pred2, col_pred3 = st.columns(3)
-
-        with col_pred1:
-            st.markdown("### 🏆 Resultado y Dobles")
-
-            df_1x2 = (
-                df_prediccion.iloc[0:6]
-                .loc[:, columnas_prediccion]
-                .copy()
-                .reset_index(drop=True)
+            entrada_goles_visitante = extraer_entrada_goles(
+                df=df_visitante_all,
+                condicion="visitante",
+                rango=rango_actual,
             )
 
-            tabla_1x2 = formatear_y_resaltar(
-                df_1x2,
+        except ValueError as error:
+            st.warning(
+                f"Diagnóstico de entrada de goles: {error}"
+            )
+
+        if (
+            entrada_goles_local is None
+            or entrada_goles_visitante is None
+        ):
+            st.warning(
+                "No se calculan probabilidades de goles: "
+                "faltan entradas válidas."
+            )
+
+        else:
+            with st.expander(
+                f"🔎 Diagnóstico del modelo de goles — "
+                f"U{rango_actual}"
+            ):
+                mostrar_diagnostico_entrada_goles(
+                    entrada_local=entrada_goles_local,
+                    entrada_visitante=entrada_goles_visitante,
+                    nombre_local=equipo_local_nombre,
+                    nombre_visitante=equipo_visitante_nombre,
+                )
+
+            prediccion = predecir_goles_desde_entradas(
+                entrada_local=entrada_goles_local,
+                entrada_visitante=entrada_goles_visitante,
+            )
+
+            prediccion_contexto, estado_contexto = (
+                aplicar_contexto_goles(
+                    prediccion=prediccion,
+
+                    df_local=(
+                        entrada_goles_local["datos_modelo"]
+                    ),
+                    df_visitante=(
+                        entrada_goles_visitante["datos_modelo"]
+                    ),
+
+                    equipo_local=equipo_local_nombre,
+                    equipo_visitante=equipo_visitante_nombre,
+
+                    n_partidos=rango_actual,
+                    intensidad=0.10,
+                )
+            )
+            with st.expander(
+                "🧮 Construcción de lambdas y control de mercados"
+            ):
+                mostrar_traza_modelo_goles(
+                    prediccion=prediccion,
+                    prediccion_contexto=prediccion_contexto,
+                )
+
+            mercados_prediccion = [
+                ("Gana Local", "Gana Local"),
+                ("Empate", "Empate"),
+                ("Gana Visitante", "Gana Visitante"),
+                ("Local o Empate 1X", "1X"),
+                ("Visitante o Empate X2", "X2"),
+                ("Gana Cualquiera 12", "12"),
+                ("Marca Local", "Marca Local"),
+                ("Marca Visitante", "Marca Visitante"),
+                ("BTTS", "BTTS"),
+                ("Over 1.5 Goles", "Over 1.5"),
+                ("Over 2.5 Goles", "Over 2.5"),
+            ]
+
+            filas_prediccion = []
+
+            for etiqueta, clave in mercados_prediccion:
+                prob_base = float(prediccion[clave])
+                prob_final = float(
+                    prediccion_contexto.get(
+                        clave,
+                        prob_base,
+                    )
+                )
+
+                filas_prediccion.append({
+                    "Métrica": etiqueta,
+                    "Prob. %": prob_base,
+                    "Prob. final %": prob_final,
+                })
+
+            df_prediccion = pd.DataFrame(
+                filas_prediccion
+            )
+
+            columnas_prediccion = [
+                "Métrica",
                 "Prob. %",
-                umbrales=(70, 60),
-                col_extra="Prob. final %"
+                "Prob. final %",
+            ]
+
+            col_pred1, col_pred2, col_pred3 = st.columns(3)
+
+            with col_pred1:
+                st.markdown("### 🏆 Resultado y Dobles")
+
+                df_1x2 = (
+                    df_prediccion.iloc[0:6]
+                    .loc[:, columnas_prediccion]
+                    .copy()
+                    .reset_index(drop=True)
+                )
+
+                tabla_1x2 = formatear_y_resaltar(
+                    df_1x2,
+                    "Prob. %",
+                    umbrales=(70, 60),
+                    col_extra="Prob. final %",
+                )
+
+                st.table(
+                    tabla_1x2.hide(axis="index")
+                )
+
+            with col_pred2:
+                st.markdown("### ⚽ Goles y BTTS")
+
+                df_goles = (
+                    df_prediccion.iloc[6:9]
+                    .loc[:, columnas_prediccion]
+                    .copy()
+                    .reset_index(drop=True)
+                )
+
+                tabla_goles = formatear_y_resaltar(
+                    df_goles,
+                    "Prob. %",
+                    umbrales=(70, 60),
+                    col_extra="Prob. final %",
+                )
+
+                st.table(
+                    tabla_goles.hide(axis="index")
+                )
+
+            with col_pred3:
+                st.markdown("### 📈 Overs")
+
+                df_overs = (
+                    df_prediccion.iloc[9:11]
+                    .loc[:, columnas_prediccion]
+                    .copy()
+                    .reset_index(drop=True)
+                )
+
+                tabla_overs = formatear_y_resaltar(
+                    df_overs,
+                    "Prob. %",
+                    umbrales=(65, 55),
+                    col_extra="Prob. final %",
+                )
+
+                st.table(
+                    tabla_overs.hide(axis="index")
+                )
+
+            st.caption(
+                f"Modelo de referencia por volumen de goles. "
+                f"U{rango_actual}: "
+                f"{entrada_goles_local['n_partidos']} partidos "
+                f"del local en casa y "
+                f"{entrada_goles_visitante['n_partidos']} "
+                f"del visitante fuera. "
+                f"Rachas disponibles en el diagnóstico; "
+                f"sin bono automático en esta versión."
             )
 
-            st.table(
-                tabla_1x2
-                .hide(axis="index")
-            )
+            st.caption(estado_contexto)
 
-        with col_pred2:
-            st.markdown("### ⚽ Goles y BTTS")
-
-            df_goles = (
-                df_prediccion.iloc[6:9]
-                .loc[:, columnas_prediccion]
-                .copy()
-                .reset_index(drop=True)
-            )
-
-            tabla_goles = formatear_y_resaltar(
-                df_goles,
-                "Prob. %",
-                umbrales=(70, 60),
-                col_extra="Prob. final %"
-            )
-
-            st.table(
-                tabla_goles
-                .hide(axis="index")
-            )
-
-        with col_pred3:
-            st.markdown("### 📈 Overs")
-
-            df_overs = (
-                df_prediccion.iloc[9:11]
-                .loc[:, columnas_prediccion]
-                .copy()
-                .reset_index(drop=True)
-            )
-
-            tabla_overs = formatear_y_resaltar(
-                df_overs,
-                "Prob. %",
-                umbrales=(65, 55),
-                col_extra="Prob. final %"
-            )
-
-            st.table(
-                tabla_overs
-                .hide(axis="index")
-            )
-
-        st.caption(estado_contexto)
-        
-        mostrar_analisis_cuartos(
-            equipo_local=equipo_local_nombre,
-            equipo_visitante=equipo_visitante_nombre,
-            mapa_equipos=mapa_equipos,
+    else:
+        st.warning(
+            "No hay estadísticas suficientes para construir "
+            "la predicción de goles en ambas condiciones."
         )
+
+    # Sección independiente del modelo de goles.
+    mostrar_analisis_cuartos(
+        equipo_local=equipo_local_nombre,
+        equipo_visitante=equipo_visitante_nombre,
+        mapa_equipos=mapa_equipos,
+    )
     
     # Definición de las columnas a mostrar basado en el rango seleccionado
     cols_to_show = ["Estadística", f"{equipo_local_nombre} ({rango_actual})", f"R{rango_actual}"]
