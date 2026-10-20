@@ -2825,8 +2825,10 @@ def calcular_metricas_avanzadas(df_local, df_visitante, equipo_local_archivo = N
     Defensa_final_vis = Defensa_base_vis * F_def_vis_c
 
     # --- LAMBDAS CRUZADOS (GOLES) ---
-    lambda_local_new = (Ataque_final_local + Defensa_final_vis) / 2.0
-    lambda_vis_new = (Ataque_final_vis + Defensa_final_local) / 2.0
+    PESO_ATAQUE = 0.6
+    PESO_DEFENSA = 0.4
+    lambda_local_new = (PESO_ATAQUE * Ataque_final_local + PESO_DEFENSA * Defensa_final_vis)
+    lambda_vis_new = (PESO_ATAQUE* Ataque_final_vis + PESO_DEFENSA * Defensa_final_local)
 
     # Evitar negativos
     lambda_local_new = max(lambda_local_new, 0.01)
@@ -5103,6 +5105,64 @@ if equipo_local_nombre and equipo_visitante_nombre:
             )
 
         else:
+            # --- MEDIAS DE xG Y TIROS A PUERTA ---
+            def media_segura(df, columna):
+                if columna not in df.columns:
+                    return 0.0
+
+                valores = pd.to_numeric(
+                    df[columna],
+                    errors="coerce",
+                ).dropna()
+
+                if valores.empty:
+                    return 0.0
+
+                return float(valores.mean())
+
+
+            df_local_rango = df_local_all.tail(rango_actual)
+            df_visitante_rango = df_visitante_all.tail(rango_actual)            
+
+            entrada_goles_local["media_xg_favor"] = media_segura(
+                df_local_rango,
+                "xg_favor",
+            )
+
+            entrada_goles_local["media_xg_contra"] = media_segura(
+                df_local_rango,
+                "xg_contra",
+            )
+
+            entrada_goles_local["media_tiros_puerta_favor"] = media_segura(
+                df_local_rango,
+                "a_puerta_favor",
+            )
+
+            entrada_goles_local["media_tiros_puerta_contra"] = media_segura(
+                df_local_rango,
+                "a_puerta_contra",
+            )
+
+            entrada_goles_visitante["media_xg_favor"] = media_segura(
+                df_visitante_rango,
+                "xg_favor",
+            )
+
+            entrada_goles_visitante["media_xg_contra"] = media_segura(
+                df_visitante_rango,
+                "xg_contra",
+            )
+
+            entrada_goles_visitante["media_tiros_puerta_favor"] = media_segura(
+                df_visitante_rango,
+                "a_puerta_favor",
+            )
+
+            entrada_goles_visitante["media_tiros_puerta_contra"] = media_segura(
+                df_visitante_rango,
+                "a_puerta_contra",
+            )
             with st.expander(
                 f"🔎 Diagnóstico del modelo de goles — "
                 f"U{rango_actual}"
@@ -5140,6 +5200,47 @@ if equipo_local_nombre and equipo_visitante_nombre:
             with st.expander(
                 "🧮 Construcción de lambdas y control de mercados"
             ):
+                # --- AUDITORÍA xG + TIROS A PUERTA ---
+                                # --- AUDITORÍA GOLES + xG ---
+                datos_auditoria = {
+                    "Concepto": [
+                        "Lambda base goles 60/40 local",
+                        "Lambda base goles 60/40 visitante",
+                        "Lambda xG local",
+                        "Lambda xG visitante",
+                        "Lambda final local",
+                        "Lambda final visitante",
+                        "Over 1.5 base",
+                        "Over 2.5 base",
+                        "BTTS base",
+                        "Over 1.5 final",
+                        "Over 2.5 final",
+                        "BTTS final",
+                    ],
+                    "Valor": [
+                        prediccion["_lambda_local_base_60_40"],
+                        prediccion["_lambda_visitante_base_60_40"],
+                        prediccion["_lambda_xg_local"],
+                        prediccion["_lambda_xg_visitante"],
+                        prediccion["_lambda_local_base"],
+                        prediccion["_lambda_visitante_base"],
+                        prediccion["Over 1.5"],
+                        prediccion["Over 2.5"],
+                        prediccion["BTTS"],
+                        prediccion_contexto.get("Over 1.5", prediccion["Over 1.5"]),
+                        prediccion_contexto.get("Over 2.5", prediccion["Over 2.5"]),
+                        prediccion_contexto.get("BTTS", prediccion["BTTS"]),
+                    ],
+                }
+
+                df_auditoria = pd.DataFrame(datos_auditoria)
+
+                st.subheader("Auditoría goles + xG")
+                st.dataframe(
+                    df_auditoria,
+                    use_container_width=True,
+                    hide_index=True,
+                )
                 mostrar_traza_modelo_goles(
                     prediccion=prediccion,
                     prediccion_contexto=prediccion_contexto,

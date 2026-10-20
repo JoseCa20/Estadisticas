@@ -1675,6 +1675,16 @@ def predecir_goles_desde_entradas(
         "gc_local": entrada_local["media_goles_contra"],
         "gf_vis": entrada_visitante["media_goles_favor"],
         "gc_vis": entrada_visitante["media_goles_contra"],
+
+        "xg_local": entrada_local["media_xg_favor"],
+        "xgc_local": entrada_local["media_xg_contra"],
+        "xg_vis": entrada_visitante["media_xg_favor"],
+        "xgc_vis": entrada_visitante["media_xg_contra"],
+
+        "sot_local": entrada_local["media_tiros_puerta_favor"],
+        "sotc_local": entrada_local["media_tiros_puerta_contra"],
+        "sot_vis": entrada_visitante["media_tiros_puerta_favor"],
+        "sotc_vis": entrada_visitante["media_tiros_puerta_contra"],
     }
 
     for nombre, valor in valores.items():
@@ -1685,14 +1695,54 @@ def predecir_goles_desde_entradas(
                 f"Media de goles inválida: {nombre}."
             )
 
-        valores[nombre] = numero
+        valores[nombre] = numero  
 
-    lambda_local = 0.50 * (
-        valores["gf_local"] + valores["gc_vis"]
+    # lambda_local = 0.50 * (
+    #     valores["gf_local"] + valores["gc_vis"]
+    # )
+
+    # lambda_vis = 0.50 * (
+    #     valores["gf_vis"] + valores["gc_local"]
+    # )
+    
+    PESO_ATAQUE = 0.6
+    PESO_DEFENSA = 0.4
+
+    lambda_local = (
+        PESO_ATAQUE * valores["gf_local"]
+        + PESO_DEFENSA * valores["gc_vis"]
     )
 
-    lambda_vis = 0.50 * (
-        valores["gf_vis"] + valores["gc_local"]
+    lambda_vis = (
+        PESO_ATAQUE * valores["gf_vis"]
+        + PESO_DEFENSA * valores["gc_local"]
+    )
+
+    lambda_local_base_60_40 = lambda_local
+    lambda_vis_base_60_40 = lambda_vis
+
+    # --- MEZCLA LAMBDA GOLES 60/40 + LAMBDA xG 60/40 ---
+    PESO_LAMBDA_GOLES = 0.70
+    PESO_LAMBDA_XG = 0.30
+
+    lambda_xg_local = (
+        0.60 * valores["xg_local"]
+        + 0.40 * valores["xgc_vis"]
+    )
+
+    lambda_xg_vis = (
+        0.60 * valores["xg_vis"]
+        + 0.40 * valores["xgc_local"]
+    )
+
+    lambda_local = (
+        PESO_LAMBDA_GOLES * lambda_local_base_60_40
+        + PESO_LAMBDA_XG * lambda_xg_local
+    )
+
+    lambda_vis = (
+        PESO_LAMBDA_GOLES * lambda_vis_base_60_40
+        + PESO_LAMBDA_XG * lambda_xg_vis
     )
 
     prediccion = _mercados_poisson_contexto(
@@ -1701,9 +1751,13 @@ def predecir_goles_desde_entradas(
     )
 
     prediccion.update({
-        "_modelo": "volumen_cruzado_50_50",
+        "_modelo": "goles_60_40_xg_30",
         "_lambda_local_base": lambda_local,
         "_lambda_visitante_base": lambda_vis,
+        "_lambda_local_base_60_40": lambda_local_base_60_40,
+        "_lambda_visitante_base_60_40": lambda_vis_base_60_40,
+        "_lambda_xg_local": lambda_xg_local,
+        "_lambda_xg_visitante": lambda_xg_vis,
         "_n_local": n_local,
         "_n_visitante": n_vis,
         "_rango": int(entrada_local["rango_solicitado"]),
@@ -1713,5 +1767,5 @@ def predecir_goles_desde_entradas(
         "_media_gf_visitante": valores["gf_vis"],
         "_media_gc_visitante": valores["gc_vis"],
     })
-
+        
     return prediccion
