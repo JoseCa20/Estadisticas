@@ -4303,6 +4303,114 @@ def generar_grafico_tendencia(df, equipo_nombre, tipo_partido):
         paper_bgcolor = "#e6e6e6"
     )
     st.plotly_chart(fig_goles_mitad_contra, use_container_width=True, config={"staticPlot": True})
+    
+@st.cache_data
+def media_xg_liga(pais: str, npartidosmax: int = None):
+    try:
+        df_equipos = pd.read_excel(RUTA_EQUIPOS_LIGAS)
+    except Exception:
+        return None
+
+    df_equipos.columns = df_equipos.columns.str.strip().str.lower()
+
+    if "equipo" not in df_equipos.columns or "pais" not in df_equipos.columns:
+        return None
+
+    df_pais = df_equipos[
+        df_equipos["pais"].str.lower() == pais.lower()
+    ]    
+
+    if df_pais.empty:
+        return None
+    
+    suma_xg_favor_local = 0.0
+    suma_xg_contra_local = 0.0
+    suma_xg_favor_visita = 0.0
+    suma_xg_contra_visita = 0.0
+    partidos_local = 0
+    partidos_visita = 0
+        
+    for equipo_archivo in df_pais["equipo"]:
+        ruta = os.path.join(RUTA_STATS, f"{equipo_archivo}.xlsx")
+
+        if not os.path.exists(ruta):
+            continue
+
+        try:
+            df = pd.read_excel(ruta)
+        except Exception:
+            continue
+
+        df = normalizar_columnas(df)        
+
+        columnas_necesarias = {
+            "xg_favor",
+            "xg_contra",
+            "equipo_local",
+            "visitante",
+        }
+        
+        if not columnas_necesarias.issubset(df.columns):
+            continue
+
+        nombre_normalizado = mapa_equipos.get(
+            equipo_archivo,
+            equipo_archivo.replace("-", " ").lower(),
+        ).lower()
+
+        es_local = (
+            df["equipo_local"]
+            .str.lower()
+            .str.contains(nombre_normalizado, na=False)
+        )
+
+        es_visitante = (
+            df["visitante"]
+            .str.lower()
+            .str.contains(nombre_normalizado, na=False)
+        )
+
+        df_local = df[es_local]
+        df_visitante = df[es_visitante]
+
+        if npartidosmax is not None:
+            df_local = df_local.tail(npartidosmax)
+            df_visitante = df_visitante.tail(npartidosmax)
+
+        suma_xg_favor_local += pd.to_numeric(
+            df_local["xg_favor"], errors="coerce"
+        ).fillna(0).sum()
+
+        suma_xg_contra_local += pd.to_numeric(
+            df_local["xg_contra"], errors="coerce"
+        ).fillna(0).sum()
+
+        suma_xg_favor_visita += pd.to_numeric(
+            df_visitante["xg_favor"], errors="coerce"
+        ).fillna(0).sum()
+
+        suma_xg_contra_visita += pd.to_numeric(
+            df_visitante["xg_contra"], errors="coerce"
+        ).fillna(0).sum()
+
+        partidos_local += len(df_local)
+        partidos_visita += len(df_visitante)
+
+    if partidos_local == 0 or partidos_visita == 0:
+        return None
+
+    xg_favor_local = suma_xg_favor_local / partidos_local
+    xg_contra_local = suma_xg_contra_local / partidos_local
+    xg_favor_visita = suma_xg_favor_visita / partidos_visita
+    xg_contra_visita = suma_xg_contra_visita / partidos_visita
+
+    return {
+        "xg_favor_local": xg_favor_local,
+        "xg_contra_local": xg_contra_local,
+        "xg_favor_visita": xg_favor_visita,
+        "xg_contra_visita": xg_contra_visita,
+        "total_liga": xg_favor_local + xg_contra_local,
+    }
 
 
 # === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
@@ -5163,6 +5271,47 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 df_visitante_rango,
                 "a_puerta_contra",
             )
+            
+            pais_local = pais_de_equipo(equipo_local_nombre)
+            pais_visitante = pais_de_equipo(equipo_visitante_nombre)
+
+            medias_liga = None
+
+            if (
+                pais_local
+                and pais_visitante
+                and pais_local == pais_visitante
+            ):
+                medias_liga = media_xg_liga(
+                    pais=pais_local,
+                    npartidosmax=rango_actual,
+                )
+
+            if medias_liga is not None:
+                entrada_goles_local["xg_liga_favor"] = medias_liga[
+                    "xg_favor_local"
+                ]
+
+                entrada_goles_local["xg_liga_contra"] = medias_liga[
+                    "xg_contra_local"
+                ]
+
+                entrada_goles_local["total_liga"] = medias_liga[
+                    "total_liga"
+                ]
+
+                entrada_goles_visitante["xg_liga_favor"] = medias_liga[
+                    "xg_favor_visita"
+                ]
+
+                entrada_goles_visitante["xg_liga_contra"] = medias_liga[
+                    "xg_contra_visita"
+                ]
+
+                entrada_goles_visitante["total_liga"] = medias_liga[
+                    "total_liga"
+                ]
+            
             with st.expander(
                 f"🔎 Diagnóstico del modelo de goles — "
                 f"U{rango_actual}"
@@ -5178,6 +5327,29 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 entrada_local=entrada_goles_local,
                 entrada_visitante=entrada_goles_visitante,
             )
+            
+            nivel_precision = prediccion.get(
+                "_nivel_precision",
+                "normal",
+            )
+
+            if nivel_precision == "diagnostico":
+                st.warning(
+                    "⚠️ Muestra insuficiente: menos de 3 partidos "
+                    "válidos por equipo. "
+                    "Se muestra únicamente el diagnóstico; "
+                    "no se generan probabilidades ni mercados."
+                )
+
+                st.stop()
+                
+            if nivel_precision == "muestra_baja":
+                st.warning(
+                    f"⚠️ Muestra baja: {prediccion['_n_referencia']} "
+                    "partidos válidos por equipo. "
+                    "El modelo aplica shrinkage hacia la media de liga "
+                    "para reducir la volatilidad."
+                )
 
             prediccion_contexto, estado_contexto = (
                 aplicar_contexto_goles(
@@ -5216,6 +5388,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
                         "Over 1.5 final",
                         "Over 2.5 final",
                         "BTTS final",
+                        "Nivel de precisión",
+                        "Partidos de referencia",
+                        "Peso equipo",
+                        "Peso liga",
                     ],
                     "Valor": [
                         prediccion["_lambda_local_base_60_40"],
@@ -5230,6 +5406,10 @@ if equipo_local_nombre and equipo_visitante_nombre:
                         prediccion_contexto.get("Over 1.5", prediccion["Over 1.5"]),
                         prediccion_contexto.get("Over 2.5", prediccion["Over 2.5"]),
                         prediccion_contexto.get("BTTS", prediccion["BTTS"]),
+                        prediccion.get("_nivel_precision"),
+                        prediccion.get("_n_referencia"),
+                        round(prediccion.get("_peso_equipo", 0), 3),
+                        round(prediccion.get("_peso_liga", 0), 3),
                     ],
                 }
 

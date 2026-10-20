@@ -1725,25 +1725,141 @@ def predecir_goles_desde_entradas(
     PESO_LAMBDA_GOLES = 0.70
     PESO_LAMBDA_XG = 0.30
 
-    lambda_xg_local = (
-        0.60 * valores["xg_local"]
-        + 0.40 * valores["xgc_vis"]
+    # --- LAMBDA xG NORMALIZADO POR LIGA ---
+    xg_liga_favor_local = entrada_local.get("xg_liga_favor")
+    xg_liga_contra_local = entrada_local.get("xg_liga_contra")
+    total_liga_local = entrada_local.get("total_liga")
+
+    xg_liga_favor_vis = entrada_visitante.get("xg_liga_favor")
+    xg_liga_contra_vis = entrada_visitante.get("xg_liga_contra")
+    total_liga_vis = entrada_visitante.get("total_liga")
+
+        # --- PRECISIÓN Y SHRINKAGE ---
+    FACTOR_SHRINKAGE = 6
+
+    n_referencia = min(n_local, n_vis)
+
+    if n_referencia >= 5:
+        nivel_precision = "normal"
+    elif n_referencia >= 3:
+        nivel_precision = "muestra_baja"
+    else:
+        nivel_precision = "diagnostico"
+
+    peso_equipo = n_referencia / (
+        n_referencia + FACTOR_SHRINKAGE
     )
 
-    lambda_xg_vis = (
-        0.60 * valores["xg_vis"]
-        + 0.40 * valores["xgc_local"]
+    peso_liga = 1 - peso_equipo
+
+    # --- SHRINKAGE DEL LAMBDA DE GOLES ---
+    if (
+        total_liga_local
+        and total_liga_vis
+    ):
+        media_goles_liga = (
+            total_liga_local + total_liga_vis
+        ) / 4
+
+        lambda_local_base_60_40 = (
+            peso_equipo * lambda_local_base_60_40
+            + peso_liga * media_goles_liga
+        )
+
+        lambda_vis_base_60_40 = (
+            peso_equipo * lambda_vis_base_60_40
+            + peso_liga * media_goles_liga
+        )
+
+    # --- SHRINKAGE DEL LAMBDA xG ---
+    if (
+        xg_liga_favor_local
+        and xg_liga_contra_vis
+        and total_liga_local
+    ):
+        indice_ataque_local = (
+            valores["xg_local"] / xg_liga_favor_local
+        )
+
+        indice_fragilidad_vis = (
+            valores["xgc_vis"] / xg_liga_contra_vis
+        )
+
+        indice_ataque_local_ajustado = 1 + peso_equipo * (
+            indice_ataque_local - 1
+        )
+
+        indice_fragilidad_vis_ajustado = 1 + peso_equipo * (
+            indice_fragilidad_vis - 1
+        )
+
+        lambda_xg_local = total_liga_local * (
+            0.60 * indice_ataque_local_ajustado
+            + 0.40 * indice_fragilidad_vis_ajustado
+        )
+    else:
+        lambda_xg_local = (
+            0.60 * valores["xg_local"]
+            + 0.40 * valores["xgc_vis"]
+        )
+
+    if (
+        xg_liga_favor_vis
+        and xg_liga_contra_local
+        and total_liga_vis
+    ):
+        indice_ataque_vis = (
+            valores["xg_vis"] / xg_liga_favor_vis
+        )
+
+        indice_fragilidad_local = (
+            valores["xgc_local"] / xg_liga_contra_local
+        )
+
+        indice_ataque_vis_ajustado = 1 + peso_equipo * (
+            indice_ataque_vis - 1
+        )
+
+        indice_fragilidad_local_ajustado = 1 + peso_equipo * (
+            indice_fragilidad_local - 1
+        )
+
+        lambda_xg_vis = total_liga_vis * (
+            0.60 * indice_ataque_vis_ajustado
+            + 0.40 * indice_fragilidad_local_ajustado
+        )
+    else:
+        lambda_xg_vis = (
+            0.60 * valores["xg_vis"]
+            + 0.40 * valores["xgc_local"]
+        )
+
+    # --- MEZCLA FINAL ---
+    xg_local_valido = (
+        valores["xg_local"] > 0
+        or valores["xgc_vis"] > 0
     )
 
-    lambda_local = (
-        PESO_LAMBDA_GOLES * lambda_local_base_60_40
-        + PESO_LAMBDA_XG * lambda_xg_local
+    xg_vis_valido = (
+        valores["xg_vis"] > 0
+        or valores["xgc_local"] > 0
     )
 
-    lambda_vis = (
-        PESO_LAMBDA_GOLES * lambda_vis_base_60_40
-        + PESO_LAMBDA_XG * lambda_xg_vis
-    )
+    if xg_local_valido:
+        lambda_local = (
+            PESO_LAMBDA_GOLES * lambda_local_base_60_40
+            + PESO_LAMBDA_XG * lambda_xg_local
+        )
+    else:
+        lambda_local = lambda_local_base_60_40
+
+    if xg_vis_valido:
+        lambda_vis = (
+            PESO_LAMBDA_GOLES * lambda_vis_base_60_40
+            + PESO_LAMBDA_XG * lambda_xg_vis
+        )
+    else:
+        lambda_vis = lambda_vis_base_60_40
 
     prediccion = _mercados_poisson_contexto(
         lambda_local,
@@ -1751,13 +1867,17 @@ def predecir_goles_desde_entradas(
     )
 
     prediccion.update({
-        "_modelo": "goles_60_40_xg_30",
+        "_modelo": "goles_60_40_xg_30_shrinkage",
         "_lambda_local_base": lambda_local,
         "_lambda_visitante_base": lambda_vis,
         "_lambda_local_base_60_40": lambda_local_base_60_40,
         "_lambda_visitante_base_60_40": lambda_vis_base_60_40,
         "_lambda_xg_local": lambda_xg_local,
         "_lambda_xg_visitante": lambda_xg_vis,
+        "_nivel_precision": nivel_precision,
+        "_n_referencia": n_referencia,
+        "_peso_equipo": peso_equipo,
+        "_peso_liga": peso_liga,
         "_n_local": n_local,
         "_n_visitante": n_vis,
         "_rango": int(entrada_local["rango_solicitado"]),
