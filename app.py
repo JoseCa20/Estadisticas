@@ -5332,16 +5332,6 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 "_nivel_precision",
                 "normal",
             )
-
-            if nivel_precision == "diagnostico":
-                st.warning(
-                    "⚠️ Muestra insuficiente: menos de 3 partidos "
-                    "válidos por equipo. "
-                    "Se muestra únicamente el diagnóstico; "
-                    "no se generan probabilidades ni mercados."
-                )
-
-                st.stop()
                 
             if nivel_precision == "muestra_baja":
                 st.warning(
@@ -5373,7 +5363,6 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 "🧮 Construcción de lambdas y control de mercados"
             ):
                 # --- AUDITORÍA xG + TIROS A PUERTA ---
-                                # --- AUDITORÍA GOLES + xG ---
                 datos_auditoria = {
                     "Concepto": [
                         "Lambda base goles 60/40 local",
