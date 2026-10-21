@@ -1735,7 +1735,7 @@ def predecir_goles_desde_entradas(
     total_liga_vis = entrada_visitante.get("total_liga")
 
         # --- PRECISIÓN Y SHRINKAGE ---
-    FACTOR_SHRINKAGE = 6
+    FACTOR_SHRINKAGE = 10
 
     n_referencia = min(n_local, n_vis)
 
@@ -1771,68 +1771,16 @@ def predecir_goles_desde_entradas(
             + peso_liga * media_goles_liga
         )
 
-    # --- SHRINKAGE DEL LAMBDA xG ---
-    if (
-        xg_liga_favor_local
-        and xg_liga_contra_vis
-        and total_liga_local
-    ):
-        indice_ataque_local = (
-            valores["xg_local"] / xg_liga_favor_local
-        )
+    # --- LAMBDA xG ABSOLUTO---
+    lambda_xg_local = (
+        0.60 * valores["xg_local"]
+        + 0.40 * valores["xgc_vis"]
+    )
 
-        indice_fragilidad_vis = (
-            valores["xgc_vis"] / xg_liga_contra_vis
-        )
-
-        indice_ataque_local_ajustado = 1 + peso_equipo * (
-            indice_ataque_local - 1
-        )
-
-        indice_fragilidad_vis_ajustado = 1 + peso_equipo * (
-            indice_fragilidad_vis - 1
-        )
-
-        lambda_xg_local = total_liga_local * (
-            0.60 * indice_ataque_local_ajustado
-            + 0.40 * indice_fragilidad_vis_ajustado
-        )
-    else:
-        lambda_xg_local = (
-            0.60 * valores["xg_local"]
-            + 0.40 * valores["xgc_vis"]
-        )
-
-    if (
-        xg_liga_favor_vis
-        and xg_liga_contra_local
-        and total_liga_vis
-    ):
-        indice_ataque_vis = (
-            valores["xg_vis"] / xg_liga_favor_vis
-        )
-
-        indice_fragilidad_local = (
-            valores["xgc_local"] / xg_liga_contra_local
-        )
-
-        indice_ataque_vis_ajustado = 1 + peso_equipo * (
-            indice_ataque_vis - 1
-        )
-
-        indice_fragilidad_local_ajustado = 1 + peso_equipo * (
-            indice_fragilidad_local - 1
-        )
-
-        lambda_xg_vis = total_liga_vis * (
-            0.60 * indice_ataque_vis_ajustado
-            + 0.40 * indice_fragilidad_local_ajustado
-        )
-    else:
-        lambda_xg_vis = (
-            0.60 * valores["xg_vis"]
-            + 0.40 * valores["xgc_local"]
-        )
+    lambda_xg_vis = (
+        0.60 * valores["xg_vis"]
+        + 0.40 * valores["xgc_local"]
+    )   
 
     # --- MEZCLA FINAL ---
     xg_local_valido = (
