@@ -4412,7 +4412,6 @@ def media_xg_liga(pais: str, npartidosmax: int = None):
         "total_liga": xg_favor_local + xg_contra_local,
     }
 
-
 # === CÁLCULO DE ESTADÍSTICAS Y RACHAS ===
 def calcular_estadisticas_y_rachas(df, equipo_nombre, tipo_partido):
     if df.empty:
@@ -4829,12 +4828,9 @@ def mostrar_analisis_cuartos(
     )
 
     columnas_medias = [
-        "Rem. favor",
-        "Rem. contra",
-        "Rem. totales",
-        "A puerta favor",
-        "A puerta contra",
-        "A puerta totales",
+    "Rem. favor", "Rem. contra", "Rem. totales",
+    "A puerta favor", "A puerta contra", "A puerta totales",
+    "BTTS", "Over 2.5", "Marca", "Recibe"  
     ]
 
     def estilo_cuartos(df, cuarto_objetivo):
@@ -5471,7 +5467,7 @@ if equipo_local_nombre and equipo_visitante_nombre:
                 tabla_1x2 = formatear_y_resaltar(
                     df_1x2,
                     "Prob. %",
-                    umbrales=(70, 60),
+                    umbrales=(50, 45),
                     col_extra="Prob. final %",
                 )
 

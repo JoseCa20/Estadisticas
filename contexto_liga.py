@@ -1452,6 +1452,18 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         cuarto_por_equipo
     )
 
+    df["_btts"] = (
+        (df["_gf"] > 0) & (df["_gc"] > 0)
+    ).astype(int)
+
+    df["_over_25"] = (
+        (df["_gf"] + df["_gc"]) > 2
+    ).astype(int)
+
+    df["_marca"] = (df["_gf"] > 0).astype(int)
+
+    df["_recibe"] = (df["_gc"] > 0).astype(int)
+
     metricas = {
         "Rem. favor": "shots_favor",
         "Rem. contra": "shots_contra",
@@ -1459,12 +1471,25 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         "A puerta favor": "a_puerta_favor",
         "A puerta contra": "a_puerta_contra",
         "A puerta totales": "_sot_total",
+        "BTTS": "_btts",
+        "Over 2.5": "_over_25",
+        "Marca": "_marca",
+        "Recibe": "_recibe",
+    }
+
+    metricas_porcentaje = {
+        "BTTS",
+        "Over 2.5",
+        "Marca",
+        "Recibe",
     }
 
     filas = []
 
     for cuarto in range(1, 5):
-        muestra = df.loc[df["_cuarto_rival"] == cuarto]
+        muestra = df.loc[
+            df["_cuarto_rival"] == cuarto
+        ]
 
         fila = {
             "Cuarto": cuarto,
@@ -1477,10 +1502,24 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         for etiqueta, columna in metricas.items():
             valores = muestra[columna].dropna()
 
-            fila[etiqueta] = (
-                float(valores.mean())
-                if not valores.empty else np.nan
-            )
+            if valores.empty:
+                fila[etiqueta] = np.nan
+                conteos.append(0)
+                continue
+
+            promedio = float(valores.mean())
+
+            if etiqueta in metricas_porcentaje:
+                fila[etiqueta] = round(
+                    promedio * 100,
+                    1,
+                )
+            else:
+                fila[etiqueta] = round(
+                    promedio,
+                    1,
+                )
+
             conteos.append(len(valores))
 
         minimo = min(conteos)
@@ -1494,14 +1533,47 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         else:
             fila["Muestra"] = "3+ datos por métrica"
 
-        # Hace visible si las medias usan menos datos que los PJ.
         fila["N mín. métricas"] = minimo
 
         filas.append(fila)
 
-    no_clasificados = int(df["_cuarto_rival"].isna().sum())
+    no_clasificados = int(
+        df["_cuarto_rival"].isna().sum()
+    )
+    
+    df_tabla = pd.DataFrame(filas)
 
-    return pd.DataFrame(filas), no_clasificados
+    columnas_porcentaje = [
+        "BTTS",
+        "Over 2.5",
+        "Marca",
+        "Recibe",
+    ]
+
+    columnas_numericas = [
+        "Rem. favor",
+        "Rem. contra",
+        "Rem. totales",
+        "A puerta favor",
+        "A puerta contra",
+        "A puerta totales",
+    ]
+
+    for columna in columnas_porcentaje:
+        if columna in df_tabla.columns:
+            df_tabla[columna] = pd.to_numeric(
+                df_tabla[columna],
+                errors="coerce",
+            ).round(1)
+
+    for columna in columnas_numericas:
+        if columna in df_tabla.columns:
+            df_tabla[columna] = pd.to_numeric(
+                df_tabla[columna],
+                errors="coerce",
+            ).round(1)
+
+    return df_tabla, no_clasificados
 
 
 def generar_analisis_cuartos(
@@ -1837,3 +1909,4 @@ def predecir_goles_desde_entradas(
     })
         
     return prediccion
+
