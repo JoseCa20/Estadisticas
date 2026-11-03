@@ -293,24 +293,33 @@ def obtener_posicion_equipo(equipo_archivo, n_partidos=10):
 # ==========================================================
 
 def calcular_percentil_liga(valor, valores_liga):
-    """
-    Calcula el percentil de un equipo dentro de su liga.
-
-    Retorna un valor entre 0 y 100.
-    """
     valores = pd.to_numeric(
         pd.Series(valores_liga),
-        errors="coerce"
-    ).dropna().values
+        errors="coerce",
+    ).dropna()
 
-    if pd.isna(valor) or len(valores) < 3:
+    valores = valores.loc[
+        np.isfinite(valores) & (valores >= 0)
+    ]
+
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):
         return None
 
-    valor = float(valor)
+    if not np.isfinite(valor) or valor < 0 or len(valores) < 3:
+        return None
 
-    percentil = (valores < valor).sum() / len(valores) * 100
+    menores = int((valores < valor).sum())
+    iguales = int((valores == valor).sum())
 
-    return round(percentil, 1)
+    percentil = (
+        (menores + 0.5 * iguales)
+        / len(valores)
+        * 100
+    )
+
+    return round(float(percentil), 1)
 
 
 def clasificar_perfil(percentil):
@@ -815,6 +824,9 @@ def preparar_contexto_remates_sot(
     mapa_equipos,
     n_partidos=10,
     fuerza=0.50,
+    auditoria=None,
+    aplicar_shrinkage=False,
+    k_contexto=6.0,
 ):
     """
     Devuelve:
@@ -831,6 +843,16 @@ def preparar_contexto_remates_sot(
         "sot_local": 1.0,
         "sot_visitante": 1.0,
     }
+    
+    if auditoria is None:
+        auditoria = []
+
+    k_contexto = float(k_contexto)
+
+    if not np.isfinite(k_contexto) or k_contexto < 0:
+        raise ValueError(
+            "k_contexto debe ser finito y mayor o igual a cero."
+        )
 
     try:
         catalogo = _leer_catalogo_contexto()
@@ -947,8 +969,11 @@ def preparar_contexto_remates_sot(
             resumen = {"equipo": equipo}
 
             for col in columnas:
+                clave_conteo = f"n_{col}"
+
                 if col not in filtrado.columns:
                     resumen[col] = np.nan
+                    resumen[clave_conteo] = 0
                     continue
 
                 valores = pd.to_numeric(
@@ -956,15 +981,19 @@ def preparar_contexto_remates_sot(
                     errors="coerce",
                 )
 
-                valores = valores[
+                valores = valores.loc[
                     valores.notna()
                     & np.isfinite(valores)
                     & (valores >= 0)
                 ]
 
+                n_validos = int(len(valores))
+
+                resumen[clave_conteo] = n_validos
+
                 resumen[col] = (
                     float(valores.mean())
-                    if len(valores) >= 3
+                    if n_validos >= 3
                     else np.nan
                 )
 
@@ -1034,37 +1063,122 @@ def preparar_contexto_remates_sot(
             col_contra,
             etiqueta,
         ):
-            ataque = propio_ataque.get(col_favor)
-            concede = propio_defensa.get(col_contra)
+            ataque = propio_ataque.get(col_favor, np.nan)
+            concede = propio_defensa.get(col_contra, np.nan)
 
-            if pd.isna(ataque) or pd.isna(concede):
-                avisos.append(
-                    f"{etiqueta}: datos insuficientes"
-                )
-                return 1.0
-
-            pct_ataque = calcular_percentil_liga(
-                ataque,
-                liga_ataque[col_favor],
+            n_ataque = int(
+                propio_ataque.get(f"n_{col_favor}", 0)
+            )
+            n_concede = int(
+                propio_defensa.get(f"n_{col_contra}", 0)
             )
 
+            def referencia_valida(tabla, columna):
+                valores = pd.to_numeric(
+                    tabla[columna],
+                    errors="coerce",
+                ).dropna()
+
+                return valores.loc[
+                    np.isfinite(valores) & (valores >= 0)
+                ]
+
+            ref_ataque = referencia_valida(
+                liga_ataque, col_favor
+            )
+            ref_concede = referencia_valida(
+                liga_defensa, col_contra
+            )
+
+            fila = {
+                "Mercado": etiqueta,
+                "Media ataque": ataque,
+                "N ataque": n_ataque,
+                "Media concede rival": concede,
+                "N concede rival": n_concede,
+                "Equipos ref. ataque": len(ref_ataque),
+                "Equipos ref. concede": len(ref_concede),
+                "Percentil ataque": np.nan,
+                "Percentil concede": np.nan,
+                "Perfil ataque": "Sin datos",
+                "Perfil concesión": "Sin datos",
+                "Factor perfil": 1.0,
+                "Factor sin shrinkage": 1.0,
+                "Peso muestra": np.nan,
+                "Factor con shrinkage": 1.0,
+                "Factor aplicado": 1.0,
+                "Estado": "",
+            }
+
+            pct_ataque = calcular_percentil_liga(
+                ataque, ref_ataque
+            )
             pct_concede = calcular_percentil_liga(
-                concede,
-                liga_defensa[col_contra],
+                concede, ref_concede
             )
 
             if pct_ataque is None or pct_concede is None:
-                avisos.append(
-                    f"{etiqueta}: referencia insuficiente"
+                mensaje = (
+                    f"{etiqueta}: datos o referencia insuficientes"
                 )
+                avisos.append(mensaje)
+                fila["Estado"] = "Neutral: faltan datos"
+                auditoria.append(fila)
                 return 1.0
 
-            factor = obtener_factor_enfrentamiento(
-                clasificar_perfil(pct_ataque),
-                clasificar_perfil(pct_concede),
+            perfil_ataque = clasificar_perfil(pct_ataque)
+            perfil_concede = clasificar_perfil(pct_concede)
+
+            factor_perfil = obtener_factor_enfrentamiento(
+                perfil_ataque,
+                perfil_concede,
             )
 
-            return 1.0 + fuerza * (factor - 1.0)
+            n_referencia = min(n_ataque, n_concede)
+
+            peso_muestra = (
+                n_referencia / (n_referencia + k_contexto)
+                if n_referencia > 0
+                else 0.0
+            )
+
+            factor_sin = (
+                1.0 + fuerza * (factor_perfil - 1.0)
+            )
+
+            factor_con = (
+                1.0
+                + fuerza
+                * peso_muestra
+                * (factor_perfil - 1.0)
+            )
+
+            factor_aplicado = (
+                factor_con
+                if aplicar_shrinkage
+                else factor_sin
+            )
+
+            fila.update({
+                "Percentil ataque": pct_ataque,
+                "Percentil concede": pct_concede,
+                "Perfil ataque": perfil_ataque,
+                "Perfil concesión": perfil_concede,
+                "Factor perfil": factor_perfil,
+                "Factor sin shrinkage": factor_sin,
+                "Peso muestra": peso_muestra,
+                "Factor con shrinkage": factor_con,
+                "Factor aplicado": factor_aplicado,
+                "Estado": (
+                    "Shrinkage aplicado"
+                    if aplicar_shrinkage
+                    else "Comparación: shrinkage no aplicado"
+                ),
+            })
+
+            auditoria.append(fila)
+
+            return float(factor_aplicado)
 
         mercados = [
             ("remates", "shots_favor", "shots_contra"),

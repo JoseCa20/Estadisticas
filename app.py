@@ -3353,6 +3353,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
     estado_contexto_remates = (
         "Sin contexto: faltan identificadores de equipos."
     )
+    
+    auditoria_contexto = []
 
     if equipo_local_archivo and equipo_visitante_archivo:
         factores_contexto, estado_contexto_remates = (
@@ -3362,6 +3364,9 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 mapa_equipos=mapa_equipos,
                 n_partidos=10,
                 fuerza=0.50,
+                auditoria=auditoria_contexto,
+                aplicar_shrinkage=False,
+                k_contexto=6.0,
             )
         )  
 
@@ -3923,6 +3928,41 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         )
         
         st.caption(estado_contexto_remates)
+        if auditoria_contexto:
+            with st.expander(
+                "🔎 Auditoría del contexto: remates y tiros a puerta"
+            ):
+                df_auditoria_contexto = pd.DataFrame(
+                    auditoria_contexto
+                )
+
+                formatos = {
+                    "Media ataque": "{:.2f}",
+                    "Media concede rival": "{:.2f}",
+                    "Percentil ataque": "{:.1f}",
+                    "Percentil concede": "{:.1f}",
+                    "Factor perfil": "{:.3f}",
+                    "Factor sin shrinkage": "{:.3f}",
+                    "Peso muestra": "{:.3f}",
+                    "Factor con shrinkage": "{:.3f}",
+                    "Factor aplicado": "{:.3f}",
+                }
+
+                st.dataframe(
+                    df_auditoria_contexto.style.format(
+                        formatos,
+                        na_rep="—",
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.caption(
+                    "El peso por muestra modera el factor hacia 1. "
+                    "No es una probabilidad de acierto. "
+                    "La comparación de factores no recalcula por sí "
+                    "sola una segunda columna de proyección."
+                )
         
 def prob_a_texto_con_cuota(p):
     try:
