@@ -1124,7 +1124,7 @@ def preparar_contexto_remates_sot(
                 avisos.append(mensaje)
                 fila["Estado"] = "Neutral: faltan datos"
                 auditoria.append(fila)
-                return 1.0
+                return 1.0, 1.0
 
             perfil_ataque = clasificar_perfil(pct_ataque)
             perfil_concede = clasificar_perfil(pct_concede)
@@ -1178,7 +1178,7 @@ def preparar_contexto_remates_sot(
 
             auditoria.append(fila)
 
-            return float(factor_aplicado)
+            return float(factor_aplicado), float(factor_con)
 
         mercados = [
             ("remates", "shots_favor", "shots_contra"),
@@ -1186,7 +1186,10 @@ def preparar_contexto_remates_sot(
         ]
 
         for prefijo, col_favor, col_contra in mercados:
-            factores[f"{prefijo}_local"] = factor_cruce(
+            (
+                factor_local_actual,
+                factor_local_shrink,
+            ) = factor_cruce(
                 propio_local,
                 propio_vis,
                 liga_local,
@@ -1196,7 +1199,10 @@ def preparar_contexto_remates_sot(
                 f"{prefijo} local",
             )
 
-            factores[f"{prefijo}_visitante"] = factor_cruce(
+            (
+                factor_vis_actual,
+                factor_vis_shrink,
+            ) = factor_cruce(
                 propio_vis,
                 propio_local,
                 liga_vis,
@@ -1205,6 +1211,12 @@ def preparar_contexto_remates_sot(
                 col_contra,
                 f"{prefijo} visitante",
             )
+
+            factores[f"{prefijo}_local"] = factor_local_actual
+            factores[f"{prefijo}_local_shrink"] = factor_local_shrink
+
+            factores[f"{prefijo}_visitante"] = factor_vis_actual
+            factores[f"{prefijo}_visitante_shrink"] = factor_vis_shrink
 
         if avisos:
             estado = "Contexto parcial: " + "; ".join(avisos)

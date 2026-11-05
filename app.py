@@ -3338,7 +3338,18 @@ def resaltar_rachas(df, columnas_actual=None, columnas_max=None, col_prob=None, 
     return styler.format({
         "Línea": "{:.1f}",
         **{col: "{:.1f}" for col in cols_prob + cols_extra if col and col in df_fmt.columns}
-    })         
+    })   
+    
+def formatear_historico_con_muestra(hist):
+    n = int(hist.get("muestra", 0))
+
+    if n <= 0:
+        return "Sin datos"
+
+    hits = int(hist.get("hits_n", 0))
+    pct = float(hist.get("pct_n", 0.0))
+
+    return f"{pct:.1f}% ({hits}/{n})"      
 
 # === TABLAS AVANZADAS BASADAS EN NUEVOS LAMBDAS ===
 def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visitante,
@@ -3609,6 +3620,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
                 umbrales=(70, 60),
             )
         )
+        
+    controles_poisson = []
 
     # Tabla 5: Remates por equipo
     with col5:
@@ -3622,6 +3635,31 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         for L in lineas_shots_eq:
             _, oL = poisson_prob_over_under(metricas["Remates_att_local"], L, max_k=25)
             _, oV = poisson_prob_over_under(metricas["Remates_att_vis"], L, max_k=25)
+            
+            if L == 12.5:
+                for lado, clave, obtenido in [
+                    ("Local", "Remates_att_local", oL),
+                    ("Visitante", "Remates_att_vis", oV),
+                ]:
+                    lambda_usado = float(metricas[clave])
+
+                    prob_directa = float(
+                        poisson.sf(
+                            int(np.floor(L)),
+                            lambda_usado,
+                        ) * 100
+                    )
+
+                    controles_poisson.append({
+                        "Mercado": "Remates",
+                        "Lado": lado,
+                        "Línea": L,
+                        "Lambda recibido": lambda_usado,
+                        "Prob. función %": float(obtenido),
+                        "Prob. directa %": prob_directa,
+                        "Diferencia pp":
+                            float(obtenido) - prob_directa,
+                    })
 
             hist_local = calcular_racha_supera_linea(df_local, "shots_favor", L, n=10, incluir_igual=False)
             hist_vis_concede = calcular_racha_concede_linea(df_visitante, "shots_contra", L, n=10, incluir_igual=False)
@@ -3671,12 +3709,14 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             rows_shots_eq.append([
                 f"+{L} Remates",
                 oL,
-                hist_local["pct_txt"],
+                formatear_historico_con_muestra(hist_local),
+                formatear_historico_con_muestra(hist_vis_concede),
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
                 proyeccion_local,
                 oV,
-                hist_vis["pct_txt"],
+                formatear_historico_con_muestra(hist_vis),
+                formatear_historico_con_muestra(hist_local_concede),
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
                 proyeccion_vis,
@@ -3686,8 +3726,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             rows_shots_eq,
             columns=[
                 "Remates",
-                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local", "Proy Local",
-                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante", "Proy Vis"
+                "Prob. Local %", "Hist. Local %", "Hist. Vis concede %", "Racha Local", "Máx Local", "Proy Local", 
+                "Prob. Visitante %", "Hist. Visitante %", "Hist. Local concede %", "Racha Visitante", "Máx Visitante", "Proy Vis",
             ]
         )
 
@@ -3852,6 +3892,31 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         for L in lineas_sot_eq:
             _, oL = poisson_prob_over_under(metricas["SoT_local"], L, max_k=10)
             _, oV = poisson_prob_over_under(metricas["SoT_vis"], L, max_k=10)
+            
+            if L == 3.5:
+                for lado, clave, obtenido in [
+                    ("Local", "SoT_local", oL),
+                    ("Visitante", "SoT_vis", oV),
+                ]:
+                    lambda_usado = float(metricas[clave])
+
+                    prob_directa = float(
+                        poisson.sf(
+                            int(np.floor(L)),
+                            lambda_usado,
+                        ) * 100
+                    )
+
+                    controles_poisson.append({
+                        "Mercado": "Tiros a puerta",
+                        "Lado": lado,
+                        "Línea": L,
+                        "Lambda recibido": lambda_usado,
+                        "Prob. función %": float(obtenido),
+                        "Prob. directa %": prob_directa,
+                        "Diferencia pp":
+                            float(obtenido) - prob_directa,
+                    })
 
             hist_local = calcular_racha_supera_linea(df_local, "a_puerta_favor", L, n=10, incluir_igual=False)
             hist_vis_concede = calcular_racha_concede_linea(df_visitante, "a_puerta_contra", L, n=10, incluir_igual=False)
@@ -3900,12 +3965,14 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             rows_sot_eq.append([
                 f"+{L} Tiros a puerta",
                 oL,
-                hist_local["pct_txt"],
+                formatear_historico_con_muestra(hist_local),
+                formatear_historico_con_muestra(hist_vis_concede),
                 hist_local["racha_actual_txt"],
                 hist_local["racha_max_txt"],
                 proyeccion_local,
                 oV,
-                hist_vis["pct_txt"],
+                formatear_historico_con_muestra(hist_vis),
+                formatear_historico_con_muestra(hist_local_concede),
                 hist_vis["racha_actual_txt"],
                 hist_vis["racha_max_txt"],
                 proyeccion_vis,
@@ -3915,8 +3982,8 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
             rows_sot_eq,
             columns=[
                 "Tiros a puerta",
-                "Prob. Local %", "Hist. Local %", "Racha Local", "Máx Local", "Proy Local",
-                "Prob. Visitante %", "Hist. Visitante %", "Racha Visitante", "Máx Visitante", "Proy Vis"
+                "Prob. Local %", "Hist. Local %", "Hist. Vis Concede", "Racha Local", "Máx Local", "Proy Local", 
+                "Prob. Visitante %", "Hist. Visitante %", "Hist. Local Concede", "Racha Visitante", "Máx Visitante", "Proy Vis",
             ]
         )
 
@@ -3932,6 +3999,72 @@ def mostrar_tablas_avanzadas(metricas, lambda1_L, lambda1_V, df_local, df_visita
         )
         
         st.caption(estado_contexto_remates)
+        with st.expander("Diagnóstico: volúmenes utilizados"):
+            st.dataframe(
+                pd.DataFrame([
+                    {
+                        "Equipo": "Local",
+                        "Remates ataque modelo":
+                            metricas["Remates_att_local"],
+                        "Remates concesión modelo":
+                            metricas["Remates_contra_local"],
+                        "Tiros a puerta ataque modelo":
+                            metricas["SoT_local"],
+                    },
+                    {
+                        "Equipo": "Visitante",
+                        "Remates ataque modelo":
+                            metricas["Remates_att_vis"],
+                        "Remates concesión modelo":
+                            metricas["Remates_contra_vis"],
+                        "Tiros a puerta ataque modelo":
+                            metricas["SoT_vis"],
+                    },
+                ]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        with st.expander("Control: lambda y probabilidad"):
+            df_control_poisson = pd.DataFrame(
+                controles_poisson
+            )
+
+            st.dataframe(
+                df_control_poisson.style.format({
+                    "Línea": "{:.1f}",
+                    "Lambda recibido": "{:.4f}",
+                    "Prob. función %": "{:.4f}",
+                    "Prob. directa %": "{:.4f}",
+                    "Diferencia pp": "{:.6f}",
+                }),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            import inspect
+
+            funcion_activa = inspect.unwrap(
+                poisson_prob_over_under
+            )
+
+            try:
+                st.caption(
+                    "Función activa: "
+                    f"{inspect.getsourcefile(funcion_activa)}"
+                    " | Línea: "
+                    f"{inspect.getsourcelines(funcion_activa)[1]}"
+                )
+
+                st.code(
+                    inspect.getsource(funcion_activa),
+                    language="python",
+                )
+
+            except (OSError, TypeError):
+                st.caption(
+                    "No se pudo recuperar el código fuente "
+                    "de la función activa."
+                )
         if auditoria_contexto:
             with st.expander(
                 "🔎 Auditoría del contexto: remates y tiros a puerta"
