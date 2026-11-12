@@ -67,72 +67,70 @@ def normalizar_columnas_basicas(df):
     return df
 
 
-def obtener_division_equipo(equipo_archivo):
-    """
-    Devuelve la división de un equipo según enlaces_equipos.xlsx.
-
-    Ejemplos:
-    - manchester-united-fc -> england
-    - birmingham-city-fc -> england_b
-    """
-
+def obtener_division_equipo(equipo_archivo):   
     if not os.path.exists(RUTA_EQUIPOS_LIGAS):
         return None
 
     df = pd.read_excel(RUTA_EQUIPOS_LIGAS)
     df = normalizar_columnas_basicas(df)
 
-    if "equipo" not in df.columns or "division" not in df.columns:
+    if not {"equipo", "division"}.issubset(df.columns):
         return None
 
-    fila = df[df["equipo"] == equipo_archivo]
+    identificadores = (
+        df["equipo"].astype("string").str.strip()
+        + "_"
+        + df["division"].astype("string").str.strip()
+    ).str.replace(" ", "_", regex=False).str.lower()
 
-    if fila.empty:
+    filas = df.loc[
+        identificadores == str(equipo_archivo).strip().lower()
+    ]
+
+    divisiones = (
+        filas["division"]
+        .astype("string")
+        .str.strip()
+        .str.lower()
+        .dropna()
+        .drop_duplicates()
+    )
+
+    if len(divisiones) != 1:
         return None
 
-    return str(fila["division"].iloc[0])
+    return str(divisiones.iloc[0])
 
-def cargar_equipos_division(division):
-    """
-    Devuelve los equipos de una división que están marcados
-    para analizar.
-    """
-
+def cargar_equipos_division(division):  
     if division is None:
         return []
 
     if not os.path.exists(RUTA_EQUIPOS_LIGAS):
         return []
 
-    df = pd.read_excel(RUTA_EQUIPOS_LIGAS)
-    df = normalizar_columnas_basicas(df)
+    df = _leer_catalogo_contexto()
 
-    columnas_requeridas = ["equipo", "division", "analizar"]
+    division = str(division).strip().lower()
 
-    for col in columnas_requeridas:
-        if col not in df.columns:
-            return []
+    df_filtrado = df.loc[
+        (df["division"] == division)
+    ].copy()
 
-    df_filtrado = df[
-        (df["division"].str.lower() == division.lower())
-        & (df["analizar"].astype(str).str.upper() == "SI")
-    ]
+    identificadores = (
+        df_filtrado["equipo"]
+        + "_"
+        + df_filtrado["division"]
+    ).str.replace(" ", "_", regex=False).str.lower()
 
-    return df_filtrado["equipo"].tolist()
+    return (
+        identificadores
+        .dropna()
+        .drop_duplicates()
+        .tolist()
+    )
 
 
-def cargar_resumen_division(division, n_partidos=10):
-    """
-    Carga los Excel de todos los equipos de una división
-    y crea un resumen con una fila por equipo.
-
-    Cada fila contiene el promedio de:
-    - shots_favor
-    - shots_contra
-    - a_puerta_favor
-    - a_puerta_contra
-    """
-
+def cargar_resumen_division(division, n_partidos=10):   
     equipos = cargar_equipos_division(division)
 
     resumenes = []
@@ -424,13 +422,27 @@ def _referencia_goles_division(
     """
     Una observación por equipo, en su condición correspondiente.
     Se excluye al equipo evaluado de su referencia.
+
+    Los archivos se identifican como equipo_division.xlsx.
     """
-    equipos = catalogo.loc[
+    division = str(division).strip().lower()
+    excluir_equipo = str(excluir_equipo).strip().lower()
+
+    filas_division = catalogo.loc[
         (catalogo["division"] == division)
-        & (catalogo["analizar"] == "si")
-        & (catalogo["equipo"] != excluir_equipo),
-        "equipo"
+        & (catalogo["analizar"] == "si"),
+        ["equipo", "division"]
     ].dropna().drop_duplicates()
+
+    equipos = (
+        filas_division["equipo"]
+        + "_"
+        + filas_division["division"]
+    ).str.replace(
+        " ", "_", regex=False
+    ).str.lower().drop_duplicates()
+
+    equipos = equipos.loc[equipos != excluir_equipo]
 
     resumenes = []
 
@@ -439,7 +451,6 @@ def _referencia_goles_division(
 
         if not os.path.exists(ruta):
             continue
-
         try:
             df = normalizar_columnas_basicas(
                 pd.read_excel(ruta)
@@ -662,10 +673,16 @@ def aplicar_contexto_goles(
         equipo_local = str(equipo_local).strip().lower()
         equipo_visitante = str(equipo_visitante).strip().lower()
 
-        def division_equipo(equipo):
+        identificadores = (
+            catalogo["equipo"]
+            + "_"
+            + catalogo["division"]
+        ).str.replace(" ", "_", regex=False).str.lower()
+
+        def division_equipo(equipo_archivo):
             divisiones = (
                 catalogo.loc[
-                    (catalogo["equipo"] == equipo)
+                    (identificadores == equipo_archivo)
                     & (catalogo["analizar"] == "si"),
                     "division"
                 ]
@@ -676,7 +693,9 @@ def aplicar_contexto_goles(
             if len(divisiones) != 1:
                 return None
 
-            return divisiones.iloc[0]
+            division = str(divisiones.iloc[0]).strip()
+
+            return division if division else None
 
         division_local = division_equipo(equipo_local)
         division_vis = division_equipo(equipo_visitante)
@@ -866,17 +885,27 @@ def preparar_contexto_remates_sot(
             for clave, valor in mapa_equipos.items()
         }
 
-        def division_equipo(equipo):
-            filas = catalogo.loc[
-                (catalogo["equipo"] == equipo)
-                & (catalogo["analizar"] == "si"),
-                "division"
-            ].dropna()
+        identificadores = (
+            catalogo["equipo"]
+            + "_"
+            + catalogo["division"]
+        ).str.replace(" ", "_", regex=False).str.lower()
 
-            if filas.empty:
+        def division_equipo(equipo_archivo):
+            divisiones = (
+                catalogo.loc[
+                    (identificadores == equipo_archivo)
+                    & (catalogo["analizar"] == "si"),
+                    "division"
+                ]
+                .dropna()
+                .drop_duplicates()
+            )
+
+            if len(divisiones) != 1:
                 return None
 
-            division = str(filas.iloc[0]).strip()
+            division = str(divisiones.iloc[0]).strip()
 
             return division if division else None
 
@@ -906,7 +935,12 @@ def preparar_contexto_remates_sot(
             if clave in cache_resumenes:
                 return cache_resumenes[clave]
 
-            nombre = mapa.get(equipo)
+            equipo_base = equipo.split("_", 1)[0]
+
+            nombre = (
+                mapa.get(equipo)
+                or mapa.get(equipo_base)
+            )
 
             if nombre is None:
                 cache_resumenes[clave] = None
@@ -1005,17 +1039,38 @@ def preparar_contexto_remates_sot(
             clave = (division, condicion)
 
             if clave not in cache_referencias:
-                equipos = catalogo.loc[
+                # Seleccionar las filas de la división.
+                filtro_division = (
                     (catalogo["division"] == division)
-                    & (catalogo["analizar"] == "si"),
-                    "equipo"
-                ].dropna().drop_duplicates()
+                    & (catalogo["analizar"] == "si")
+                )
+
+                filas_division = catalogo.loc[
+                    filtro_division
+                ].copy()
+
+                # Seleccionar columnas mediante una lista.
+                filas_division = (
+                    filas_division[["equipo", "division"]]
+                    .dropna()
+                    .drop_duplicates()
+                )
+
+                # Identificadores completos de los archivos.
+                equipos = (
+                    filas_division["equipo"]
+                    + "_"
+                    + filas_division["division"]
+                ).str.replace(
+                    " ", "_", regex=False
+                ).str.lower().drop_duplicates()
 
                 filas = []
 
                 for equipo in equipos:
                     resumen = resumen_equipo(
-                        equipo, condicion
+                        equipo,
+                        condicion,
                     )
 
                     if resumen is not None:
@@ -1228,7 +1283,12 @@ def preparar_contexto_remates_sot(
         return factores, estado
 
     except (OSError, ValueError, KeyError, TypeError) as error:
-        return factores, f"Sin contexto: {error}"
+        import traceback
+
+        detalle = traceback.format_exc()
+        print(detalle)
+
+        return factores, f"Sin contexto:\n\n{detalle}"
 
 
 # ==========================================================
@@ -1253,20 +1313,7 @@ def _texto_cuartos(valor):
     return " ".join(texto.split())
 
 
-def _cargar_division_cuartos(division, catalogo, mapa_equipos):
-    """
-    Lee todos los archivos completos de una división.
-
-    Devuelve:
-        {
-            "clasificacion": DataFrame,
-            "partidos": {equipo: DataFrame},
-            "rangos": {cuarto: texto},
-            "avisos": [...]
-        }
-
-    No modifica los cálculos anteriores.
-    """
+def _cargar_division_cuartos(division, catalogo, mapa_equipos):    
     equipos = (
         catalogo.loc[
             catalogo["division"] == division,
@@ -1282,24 +1329,43 @@ def _cargar_division_cuartos(division, catalogo, mapa_equipos):
             f"{division}: hay menos de cuatro equipos registrados."
         )
 
-    mapa = {
+    mapa_recibido = {
         str(clave).strip().lower(): _texto_cuartos(valor)
         for clave, valor in mapa_equipos.items()
     }
 
+    mapa = {}
+
+    for equipo in equipos:
+        identificador_archivo = (
+            f"{equipo}_{division}"
+            .replace(" ", "_")
+            .lower()
+        )
+
+        nombre = (
+            mapa_recibido.get(identificador_archivo)
+            or mapa_recibido.get(equipo)
+        )
+
+        if nombre:
+            mapa[equipo] = nombre
+
     sin_mapa = [
-        equipo for equipo in equipos
+        equipo
+        for equipo in equipos
         if not mapa.get(equipo)
     ]
 
     if sin_mapa:
         raise ValueError(
             f"{division}: faltan nombres en mapa_equipos para: "
-            + ", ".join(sin_mapa)
+            + ", ".join(
+                f"{equipo} (o {equipo}_{division})"
+                for equipo in sin_mapa
+            )
         )
-
-    # Los nombres se resuelven dentro de la división,
-    # no globalmente entre países diferentes.
+        
     inverso = {}
 
     for equipo in equipos:
@@ -1338,16 +1404,24 @@ def _cargar_division_cuartos(division, catalogo, mapa_equipos):
     avisos = []
 
     for equipo in equipos:
-        ruta = os.path.join(RUTA_STATS, f"{equipo}.xlsx")
+        nombre_archivo = (
+            f"{equipo}_{division}"
+            .replace(" ", "_")
+            .lower()
+            + ".xlsx"
+        )
+
+        ruta = os.path.join(RUTA_STATS, nombre_archivo)
 
         try:
             df = normalizar_columnas_basicas(
                 pd.read_excel(ruta)
             ).copy()
+
         except (OSError, ValueError) as error:
             raise ValueError(
-                f"{division}: no se pudo leer {equipo}.xlsx. "
-                f"No se construye una clasificación parcial. "
+                f"{division}: no se pudo leer {nombre_archivo}. "
+                "No se construye una clasificación parcial. "
                 f"Detalle: {error}"
             ) from error
 
@@ -1707,37 +1781,48 @@ def generar_analisis_cuartos(
     equipo_visitante,
     mapa_equipos,
 ):
-    """
-    Nueva sección descriptiva.
-
-    Usa la temporada completa y no altera predicciones existentes.
-    Los rivales se agrupan por su clasificación general actual.
-    """
     catalogo = _leer_catalogo_contexto()
 
     equipo_local = str(equipo_local).strip().lower()
     equipo_visitante = str(equipo_visitante).strip().lower()
+    
+    identificadores = (
+        catalogo["equipo"]
+        + "_"
+        + catalogo["division"]
+    ).str.replace(" ", "_", regex=False).str.lower()
 
-    def division_de(equipo):
-        divisiones = (
+
+    def division_de(equipo_archivo):
+        coincidencias = (
             catalogo.loc[
-                catalogo["equipo"] == equipo,
-                "division"
+                identificadores == equipo_archivo,
+                ["equipo", "division"]
             ]
             .dropna()
             .drop_duplicates()
         )
 
-        if len(divisiones) != 1:
+        if coincidencias.empty:
             raise ValueError(
-                f"{equipo}: debe tener una única división "
+                f"{equipo_archivo}: no se encontró la combinación "
+                "equipo-división en enlaces_equipos.xlsx."
+            )
+
+        if len(coincidencias) != 1:
+            raise ValueError(
+                f"{equipo_archivo}: el identificador corresponde "
+                "a más de una combinación equipo-división "
                 "en enlaces_equipos.xlsx."
             )
 
-        return divisiones.iloc[0]
+        fila = coincidencias.iloc[0]
 
-    division_local = division_de(equipo_local)
-    division_vis = division_de(equipo_visitante)
+        return str(fila["equipo"]), str(fila["division"])
+
+
+    equipo_local, division_local = division_de(equipo_local)
+    equipo_visitante, division_vis = division_de(equipo_visitante)
 
     datos_divisiones = {}
 
