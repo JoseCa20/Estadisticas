@@ -1652,17 +1652,27 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         cuarto_por_equipo
     )
 
+    total_goles = df["_gf"] + df["_gc"]
+
     df["_btts"] = (
         (df["_gf"] > 0) & (df["_gc"] > 0)
     ).astype(int)
 
-    df["_over_25"] = (
-        (df["_gf"] + df["_gc"]) > 2
-    ).astype(int)
+    df["_over_15"] = (total_goles >= 2).astype(int)
+    df["_over_25"] = (total_goles >= 3).astype(int)
 
-    df["_marca"] = (df["_gf"] > 0).astype(int)
+    df["_marca"] = (df["_gf"] >= 1).astype(int)
+    df["_marca_15"] = (df["_gf"] >= 2).astype(int)
 
-    df["_recibe"] = (df["_gc"] > 0).astype(int)
+    df["_recibe"] = (df["_gc"] >= 1).astype(int)
+    df["_recibe_15"] = (df["_gc"] >= 2).astype(int)
+
+    df["_resultado_cuartos"] = (
+        df["resultado"]
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
 
     metricas = {
         "Rem. favor": "shots_favor",
@@ -1672,17 +1682,38 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         "A puerta contra": "a_puerta_contra",
         "A puerta totales": "_sot_total",
         "BTTS": "_btts",
+        "Over 1.5": "_over_15",
         "Over 2.5": "_over_25",
         "Marca": "_marca",
+        "Marca 1.5": "_marca_15",
         "Recibe": "_recibe",
+        "Recibe 1.5": "_recibe_15",
     }
 
-    metricas_porcentaje = {
+    columnas_medias = [
+        "Rem. favor",
+        "Rem. contra",
+        "Rem. totales",
+        "A puerta favor",
+        "A puerta contra",
+        "A puerta totales",
+    ]
+
+    columnas_porcentaje = [
         "BTTS",
+        "Over 1.5",
         "Over 2.5",
         "Marca",
+        "Marca 1.5",
         "Recibe",
-    }
+        "Recibe 1.5",
+        "Victorias %",
+        "Gana/Empata %",
+    ]
+
+    metricas_porcentaje = set(
+        columnas_porcentaje
+    )
 
     filas = []
 
@@ -1700,81 +1731,139 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
         conteos = []
 
         for etiqueta, columna in metricas.items():
-            valores = muestra[columna].dropna()
+            valores = pd.to_numeric(
+                muestra[columna],
+                errors="coerce",
+            )
 
-            if valores.empty:
+            valores = valores.loc[
+                np.isfinite(valores) & (valores >= 0)
+            ]
+
+            n_validos = len(valores)
+            conteos.append(n_validos)
+
+            if etiqueta in columnas_medias:
+                fila[f"_n_validos__{etiqueta}"] = n_validos
+                fila[f"_supera_hits__{etiqueta}"] = 0
+                fila[f"_supera_pct__{etiqueta}"] = np.nan
+
+            if n_validos == 0:
                 fila[etiqueta] = np.nan
-                conteos.append(0)
                 continue
 
-            promedio = float(valores.mean())
+            promedio_original = float(valores.mean())
 
             if etiqueta in metricas_porcentaje:
                 fila[etiqueta] = round(
-                    promedio * 100,
+                    promedio_original * 100,
                     1,
                 )
             else:
                 fila[etiqueta] = round(
-                    promedio,
+                    promedio_original,
                     1,
                 )
 
-            conteos.append(len(valores))
+            if etiqueta in columnas_medias:
+                supera_hits = int(
+                    (valores > promedio_original).sum()
+                )
 
-        minimo = min(conteos)
+                supera_pct = (
+                    supera_hits / n_validos * 100
+                )
 
-        if muestra.empty:
-            fila["Muestra"] = "Sin partidos"
-        elif minimo == 0:
-            fila["Muestra"] = "Faltan estadísticas"
-        elif minimo < 3:
-            fila["Muestra"] = "Muy pequeña"
+                fila[f"_supera_hits__{etiqueta}"] = (
+                    supera_hits
+                )
+                fila[f"_supera_pct__{etiqueta}"] = round(
+                    supera_pct,
+                    1,
+                )
+
+        resultados = muestra["_resultado_cuartos"]
+
+        resultados_validos = resultados.loc[
+            resultados.isin(["L", "D", "W"])
+        ]
+
+        total_resultados = len(resultados_validos)
+
+        if total_resultados > 0:
+            victorias = int(
+                resultados_validos.eq("W").sum()
+            )
+
+            empates = int(
+                resultados_validos.eq("D").sum()
+            )
+
+            fila["Victorias %"] = round(
+                victorias / total_resultados * 100,
+                1,
+            )
+
+            fila["Gana/Empata %"] = round(
+                (victorias + empates)
+                / total_resultados
+                * 100,
+                1,
+            )
         else:
-            fila["Muestra"] = "3+ datos por métrica"
+            fila["Victorias %"] = np.nan
+            fila["Gana/Empata %"] = np.nan
 
-        fila["N mín. métricas"] = minimo
+        fila["N mín. métricas"] = min(conteos)
 
         filas.append(fila)
 
     no_clasificados = int(
         df["_cuarto_rival"].isna().sum()
     )
-    
-    df_tabla = pd.DataFrame(filas)
 
-    columnas_porcentaje = [
+    columnas_visibles = [
+        "Cuarto",
+        "Puestos",
+        "PJ",
+        *columnas_medias,
         "BTTS",
+        "Over 1.5",
         "Over 2.5",
         "Marca",
+        "Marca 1.5",
         "Recibe",
+        "Recibe 1.5",
+        "Victorias %",
+        "Gana/Empata %",
+        "N mín. métricas",
     ]
 
-    columnas_numericas = [
-        "Rem. favor",
-        "Rem. contra",
-        "Rem. totales",
-        "A puerta favor",
-        "A puerta contra",
-        "A puerta totales",
+    columnas_auxiliares = [
+        f"{prefijo}{columna}"
+        for columna in columnas_medias
+        for prefijo in [
+            "_n_validos__",
+            "_supera_hits__",
+            "_supera_pct__",
+        ]
     ]
 
-    for columna in columnas_porcentaje:
-        if columna in df_tabla.columns:
-            df_tabla[columna] = pd.to_numeric(
-                df_tabla[columna],
-                errors="coerce",
-            ).round(1)
+    df_tabla = pd.DataFrame(filas)
 
-    for columna in columnas_numericas:
-        if columna in df_tabla.columns:
-            df_tabla[columna] = pd.to_numeric(
-                df_tabla[columna],
-                errors="coerce",
-            ).round(1)
+    df_tabla = df_tabla.reindex(
+        columns=columnas_visibles + columnas_auxiliares
+    )
+
+    for columna in (
+        columnas_medias + columnas_porcentaje
+    ):
+        df_tabla[columna] = pd.to_numeric(
+            df_tabla[columna],
+            errors="coerce",
+        ).round(1)
 
     return df_tabla, no_clasificados
-
 
 def generar_analisis_cuartos(
     equipo_local,

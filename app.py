@@ -5034,7 +5034,9 @@ def mostrar_analisis_cuartos(
     equipo_visitante,
     mapa_equipos,
 ):
-    st.markdown("## 📊 Rendimiento según clasificación del rival")
+    st.markdown(
+        "## Rendimiento según clasificación del rival"
+    )
 
     try:
         analisis = generar_analisis_cuartos(
@@ -5045,11 +5047,14 @@ def mostrar_analisis_cuartos(
 
     except (OSError, ValueError, KeyError) as error:
         st.warning(
-            f"No se pudo construir el análisis por cuartos: {error}"
+            "No se pudo construir el análisis por cuartos: "
+            f"{error}"
         )
         return
 
-    st.markdown("### 🏆 Posiciones y puntos de la temporada")
+    st.markdown(
+        "### Posiciones y puntos de la temporada"
+    )
 
     st.table(
         analisis["resumen"].style
@@ -5057,31 +5062,107 @@ def mostrar_analisis_cuartos(
     )
 
     columnas_medias = [
-    "Rem. favor", "Rem. contra", "Rem. totales",
-    "A puerta favor", "A puerta contra", "A puerta totales",
-    "BTTS", "Over 2.5", "Marca", "Recibe"  
+        "Rem. favor",
+        "Rem. contra",
+        "Rem. totales",
+        "A puerta favor",
+        "A puerta contra",
+        "A puerta totales",
+    ]
+
+    columnas_porcentaje = [
+        "BTTS",
+        "Over 1.5",
+        "Over 2.5",
+        "Marca",
+        "Marca 1.5",
+        "Recibe",
+        "Recibe 1.5",
+        "Victorias %",
+        "Gana/Empata %",
     ]
 
     def estilo_cuartos(df, cuarto_objetivo):
+        df_visible = df.copy()
+
+        for columna in columnas_medias:
+            celdas = []
+
+            for _, fila in df.iterrows():
+                promedio = fila[columna]
+                porcentaje = fila[
+                    f"_supera_pct__{columna}"
+                ]
+                aciertos = fila[
+                    f"_supera_hits__{columna}"
+                ]
+                n_validos = fila[
+                    f"_n_validos__{columna}"
+                ]
+
+                if (
+                    pd.isna(promedio)
+                    or pd.isna(porcentaje)
+                    or pd.isna(n_validos)
+                    or n_validos == 0
+                ):
+                    celdas.append("Sin datos")
+                else:
+                    celdas.append(
+                        f"{float(promedio):.1f} "
+                        f"({float(porcentaje):.1f}%; "
+                        f"{int(aciertos)}/{int(n_validos)})"
+                    )
+
+            df_visible[columna] = celdas
+
+        columnas_auxiliares = [
+            columna
+            for columna in df_visible.columns
+            if columna.startswith((
+                "_n_validos__",
+                "_supera_hits__",
+                "_supera_pct__",
+            ))
+        ]
+
+        df_visible = df_visible.drop(
+            columns=columnas_auxiliares
+        )
+
         def color_fila(fila):
             if (
                 cuarto_objetivo is not None
                 and fila["Cuarto"] == cuarto_objetivo
             ):
                 return [
-                    "background-color: #fff3cd; color: #333333"
+                    "background-color: #fff3cd; "
+                    "color: #333333"
                 ] * len(fila)
 
             return [""] * len(fila)
 
+        formatos = {
+            columna: "{:.1f}"
+            for columna in columnas_porcentaje
+            if columna in df_visible.columns
+        }
+
+        formatos.update({
+            columna: "{:.0f}"
+            for columna in [
+                "Cuarto",
+                "PJ",
+                "N mín. métricas",
+            ]
+            if columna in df_visible.columns
+        })
+
         return (
-            df.style
+            df_visible.style
             .apply(color_fila, axis=1)
             .format(
-                {
-                    columna: "{:.1f}"
-                    for columna in columnas_medias
-                },
+                formatos,
                 na_rep="Sin datos",
             )
             .hide(axis="index")
@@ -5092,17 +5173,22 @@ def mostrar_analisis_cuartos(
 
     nombre_local = mapa_equipos.get(
         equipo_local,
-        mapa_equipos.get(equipo_local_base, equipo_local_base)
+        mapa_equipos.get(
+            equipo_local_base,
+            equipo_local_base,
+        ),
     )
 
     nombre_vis = mapa_equipos.get(
         equipo_visitante,
-        mapa_equipos.get(equipo_visitante_base, equipo_visitante_base)
+        mapa_equipos.get(
+            equipo_visitante_base,
+            equipo_visitante_base,
+        ),
     )
 
-    # Una debajo de la otra para no comprimir tantas columnas.
     st.markdown(
-        f"### 🏠 {nombre_local.title()} — partidos como local"
+        f"### {nombre_local.title()} — partidos como local"
     )
 
     st.table(
@@ -5113,7 +5199,7 @@ def mostrar_analisis_cuartos(
     )
 
     st.markdown(
-        f"### ✈️ {nombre_vis.title()} — partidos como visitante"
+        f"### {nombre_vis.title()} — partidos como visitante"
     )
 
     st.table(
@@ -5126,18 +5212,35 @@ def mostrar_analisis_cuartos(
     st.caption(
         "Temporada completa. Los cuartos corresponden a la "
         "clasificación general actual de los rivales. "
-        "La fila resaltada corresponde al cuarto del próximo rival "
-        "cuando ambos equipos pertenecen a la misma división. "
-        "PJ = partidos del grupo. N mín. métricas = menor cantidad "
-        "de datos válidos utilizada entre las seis medias. "
+        "La fila resaltada corresponde al cuarto del próximo "
+        "rival cuando ambos equipos pertenecen a la misma "
+        "división. En remates y tiros a puerta se muestra: "
+        "promedio (porcentaje que superó su propio promedio; "
+        "aciertos/datos válidos). La comparación es estricta "
+        "y utiliza el promedio sin redondear. "
+        "Los valores iguales al promedio no cuentan como "
+        "superación y los datos faltantes se excluyen."
+    )
+
+    st.caption(
+        "PJ = partidos del grupo. "
+        "N mín. métricas = menor cantidad de datos válidos "
+        "utilizada entre las métricas de remates, tiros a "
+        "puerta y goles. Victorias % utiliza W; "
+        "Gana/Empata % utiliza W y D. Ambos porcentajes "
+        "usan como denominador únicamente los resultados "
+        "L, D y W válidos del grupo. "
+        "Son frecuencias históricas, no probabilidades futuras. "
         "Esta sección no modifica las probabilidades existentes."
     )
 
     if analisis["avisos"]:
-        with st.expander("⚠️ Revisar cobertura e identificación de datos"):
+        with st.expander(
+            "Revisar cobertura e identificación de datos"
+        ):
             for aviso in analisis["avisos"]:
                 st.write(f"• {aviso}")
-
+                
 # === UI SELECCIÓN ===
 col1, col2 = st.columns(2)
 with col1:
