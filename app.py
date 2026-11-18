@@ -896,12 +896,38 @@ def media_remates_liga(pais: str, condicion: str = "local", n_partidos_max: int 
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # Filtrar por condición (local o visitante)
-        if condicion == "local":
-            df_filtrado = df[df["equipo_local"].str.lower().str.contains(
-                mapa_equipos.get(equipo_archivo, equipo_archivo.replace("-", " ").lower()), na=False)]
-        else:  # visitante
-            df_filtrado = df[df["visitante"].str.lower().str.contains(
-                mapa_equipos.get(equipo_archivo, equipo_archivo.replace("-", " ").lower()), na=False)]
+        identificador_completo = (
+            f"{equipo_archivo}_{division}"
+            .replace(" ", "_")
+            .lower()
+        )
+
+        nombre_equipo = (
+            mapa_equipos.get(identificador_completo)
+            or mapa_equipos.get(equipo_archivo)
+        )
+
+        if not nombre_equipo:
+            raise ValueError(
+                "media_remates_liga: falta el nombre en "
+                f"mapa_equipos para {identificador_completo}."
+            )
+
+        columna_condicion = (
+            "equipo_local"
+            if condicion == "local"
+            else "visitante"
+        )
+
+        df_filtrado = df[
+            df[columna_condicion]
+            .str.lower()
+            .str.contains(
+                str(nombre_equipo).lower(),
+                na=False,
+                regex=False,
+            )
+        ]
 
         if n_partidos_max is not None:
             df_filtrado = df_filtrado.tail(n_partidos_max)
