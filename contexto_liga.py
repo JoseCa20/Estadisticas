@@ -1767,7 +1767,7 @@ def _tabla_rendimiento_cuartos(equipo, condicion, datos):
 
             if etiqueta in columnas_medias:
                 supera_hits = int(
-                    (valores > promedio_original).sum()
+                    (valores >= promedio_original).sum()
                 )
 
                 supera_pct = (
